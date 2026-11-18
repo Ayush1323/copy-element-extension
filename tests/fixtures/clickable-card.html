@@ -1,0 +1,57 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>Clickable card fixture</title>
+<style>
+  body { margin: 0; font-family: sans-serif; }
+  main { padding: 24px; }
+  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
+  a.card-link { display: block; color: inherit; text-decoration: none; }
+  .card { border: 1px solid #ddd; border-radius: 16px; padding: 20px; background: #fff; }
+  .content h2 { font-size: 22px; margin: 0 0 8px; }
+  .content p { margin: 0 0 12px; font-size: 14px; }
+  .group h4 { margin: 0 0 6px; font-size: 13px; }
+  .tags { display: flex; flex-wrap: wrap; gap: 8px; }
+  .tags span { padding: 4px 10px; border: 1px solid #ccc; border-radius: 99px; }
+  .stats { display: flex; gap: 16px; }
+  .stat { display: flex; flex-direction: column; }
+  .stat .num { font-size: 20px; font-weight: 700; }
+  .hidden-mobile { display: none; }
+  .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+</style></head>
+<body><main>
+<h1>Cloud Managed Services</h1>
+<div class="grid" id="grid">
+  <a class="card-link" id="robo" href="https://example.com/robo-advisory">
+    <div class="card">
+      <img src="x.png" alt="decorative">
+      <div class="content">
+        <h2>Asset Allocation Robo-Advisory App</h2>
+        <p id="robo-p">A tactical asset allocation robo-advising app with which the company strives to redefine the way individuals engage with their financial futures, fostering a new era of inclusive and informed investment practices.</p>
+        <div class="group">
+          <h4>Technologies</h4>
+          <div class="tags" id="robo-tags"><span>Cloud - Microservices</span><span>APEX Implementation</span><span>Admin Panel Implementation</span></div>
+        </div>
+        <div class="group">
+          <h4>Outcomes</h4>
+          <div class="stats">
+            <div class="stat"><span class="num">25%</span><span>Spike in ROI</span></div>
+            <div class="stat"><span class="num">95%</span><span>Accuracy rate</span></div>
+            <div class="stat"><span class="num">15%</span><span>Increase in revenues</span></div>
+          </div>
+        </div>
+        <span class="hidden-mobile">HIDDEN DUPLICATE TEXT</span>
+        <span class="sr-only">Read case study</span>
+        <script>window.tracking = 'SCRIPT TEXT';</script>
+      </div>
+    </div>
+  </a>
+  <a class="card-link" id="other" href="https://example.com/other">
+    <div class="card">
+      <div class="content">
+        <h2>Another Project Title</h2>
+        <p>Second card with its own descriptive paragraph that is long enough to count as body text.</p>
+        <div class="group"><h4>Technologies</h4><div class="tags"><span>React</span><span>Node</span></div></div>
+      </div>
+    </div>
+  </a>
+</div>
+</main></body></html>

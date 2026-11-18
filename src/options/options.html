@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Instant Copy Settings</title>
+  <link rel="stylesheet" href="options.css">
+</head>
+<body>
+  <div class="page">
+    <header class="top">
+      <span class="logo" id="logo"></span>
+      <div>
+        <h1>MindInventory Instant Copy</h1>
+        <p>Settings · Select. Extract. Copy. Done.</p>
+      </div>
+      <span class="saved" id="saved" aria-live="polite"></span>
+    </header>
+
+    <section class="card">
+      <h2>Copying</h2>
+      <div class="row"><div class="lbl"><b>Default copy format</b><span>Used by element, card and section copies.</span></div>
+        <div class="seg" id="defaultFormat" data-key="defaultFormat"><button data-v="plain">Plain Text</button><button data-v="rich">Rich Text (HTML)</button></div></div>
+      <div class="row"><div class="lbl"><b>Default extraction behaviour</b><span>What clicking a card or section does.</span></div>
+        <div class="seg" id="extractionBehavior" data-key="extractionBehavior"><button data-v="instant">Copy instantly</button><button data-v="preview">Preview first</button></div></div>
+      <div class="row"><div class="lbl"><b>Heading style (plain text)</b><span>Plain keeps headings as simple lines; Markdown adds # prefixes.</span></div>
+        <div class="seg" id="headingStyle" data-key="headingStyle"><button data-v="plain">Plain</button><button data-v="markdown">Markdown</button></div></div>
+      <div class="row"><div class="lbl"><b>Include buttons &amp; CTAs</b><span>Add button text such as “[Read more]” to card and section copies.</span></div>
+        <label class="switch"><input type="checkbox" data-key="includeButtons"><i></i></label></div>
+    </section>
+
+    <section class="card">
+      <h2>Interface</h2>
+      <div class="row"><div class="lbl"><b>Floating toolbar</b><span>Show the action toolbar next to the highlighted element.</span></div>
+        <label class="switch"><input type="checkbox" data-key="toolbarEnabled"><i></i></label></div>
+      <div class="row"><div class="lbl"><b>Element type labels</b><span>Display H2 HEADING, PARAGRAPH, CARD … on highlights.</span></div>
+        <label class="switch"><input type="checkbox" data-key="showLabels"><i></i></label></div>
+      <div class="row"><div class="lbl"><b>Toast notifications</b><span>Confirm each successful copy on the page.</span></div>
+        <label class="switch"><input type="checkbox" data-key="toastEnabled"><i></i></label></div>
+      <div class="row"><div class="lbl"><b>Highlight colour</b><span>Outline and accent colour used on pages.</span></div>
+        <div class="colors" id="colors"></div></div>
+    </section>
+
+    <section class="card">
+      <h2>History &amp; privacy</h2>
+      <div class="row"><div class="lbl"><b>Keep copy history</b><span>Stores your last 25 copies locally in this browser. Never transmitted.</span></div>
+        <label class="switch"><input type="checkbox" data-key="historyEnabled"><i></i></label></div>
+      <div class="row"><div class="lbl"><b>Clear history</b><span id="histCount">—</span></div>
+        <button class="btn danger" id="clearHistory">Clear history</button></div>
+    </section>
+
+    <section class="card">
+      <h2>Keyboard shortcuts</h2>
+      <ul class="keys">
+        <li><span>Activate Element Picker</span><kbd>Alt</kbd><kbd>E</kbd></li>
+        <li><span>Activate Section Extractor</span><kbd>Alt</kbd><kbd>S</kbd></li>
+        <li><span>Copy hovered element</span><kbd>Alt</kbd><kbd>C</kbd></li>
+        <li><span>Select parent / child element</span><kbd>Alt</kbd><kbd>↑</kbd> <kbd>↓</kbd></li>
+        <li><span>Exit current mode</span><kbd>Esc</kbd></li>
+      </ul>
+      <p class="hint">Change the Chrome-level shortcuts at <a href="#" id="shortcutsLink">chrome://extensions/shortcuts</a>.</p>
+    </section>
+
+    <section class="card">
+      <h2>Reset</h2>
+      <div class="row"><div class="lbl"><b>Reset all settings</b><span>Restore the defaults. Copy history is kept.</span></div>
+        <button class="btn" id="reset">Reset settings</button></div>
+    </section>
+    <footer class="foot">Everything runs locally. No analytics, no servers. <span id="ver"></span></footer>
+  </div>
+  <script src="options.js"></script>
+</body>
+</html>

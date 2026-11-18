@@ -1,0 +1,15 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>Nested links</title>
+<style>.btn{display:inline-block;padding:8px 14px;background:#2563eb;color:#fff}</style></head>
+<body>
+<article id="post">
+  <h1>Guide to <em>Fast</em> Design</h1>
+  <p id="para">Read the <a href="/docs" id="inline-link">official documentation</a> and <strong>learn</strong> the <b>basics</b> before you start.</p>
+  <ul id="list"><li>First <i>item</i></li><li>Second item<ul><li>Nested item</li></ul></li></ul>
+  <ol id="olist"><li>Step one</li><li>Step two</li></ol>
+  <a class="btn" id="cta" href="/signup">Get started</a>
+  <button id="plain-btn">Subscribe</button>
+  <nav id="nav"><a href="/a">Home</a><a href="/b">Pricing</a></nav>
+  <p id="evil">Click <a href="javascript:alert(1)" onclick="steal()">here</a> <script>alert(1)</script><span style="color:red" onmouseover="x()">styled</span></p>
+</article>
+</body></html>

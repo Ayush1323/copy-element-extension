@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>MindInventory Instant Copy</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <div class="app" id="app">
+    <header id="header" class="header"></header>
+    <main class="main">
+      <section class="welcome">
+        <h1>Copy website content effortlessly.</h1>
+        <p>Select any element and extract its content instantly.</p>
+      </section>
+      <section id="notice" class="notice" hidden></section>
+      <section id="actions" class="actions" aria-label="Extraction tools"></section>
+      <section class="block">
+        <div class="block-head"><h2>Extraction format</h2></div>
+        <div id="format" class="segmented" role="radiogroup" aria-label="Copy format"></div>
+      </section>
+      <section class="block">
+        <div class="block-head"><h2>Current session</h2></div>
+        <div id="status" class="status"></div>
+      </section>
+      <section class="block">
+        <div class="block-head"><h2>Recent activity</h2><button id="clear-all" class="link" hidden>Clear all</button></div>
+        <div id="activity"></div>
+      </section>
+    </main>
+    <footer id="footer" class="footer"></footer>
+    <div id="sheet" class="sheet" hidden></div>
+    <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
+  </div>
+  <script src="popup.js"></script>
+</body>
+</html>

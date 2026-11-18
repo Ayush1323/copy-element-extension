@@ -1,0 +1,23 @@
+{
+  "name": "mindinventory-instant-copy",
+  "version": "1.0.0",
+  "description": "Select. Extract. Copy. Done. \u2014 smart website content extraction for designers.",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "node scripts/build.mjs && node scripts/verify-dist.mjs",
+    "watch": "node scripts/build.mjs --watch",
+    "test": "node --test \"tests/unit/*.test.mjs\"",
+    "test:e2e": "node tests/e2e/run.mjs",
+    "verify": "node scripts/verify-dist.mjs"
+  },
+  "devDependencies": {
+    "esbuild": "^0.25.0",
+    "jsdom": "^26.0.0",
+    "puppeteer-core": "^24.0.0"
+  },
+  "license": "MIT",
+  "engines": {
+    "node": ">=18"
+  }
+}
