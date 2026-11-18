@@ -1,0 +1,21 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>Links</title>
+<style>body{font:16px sans-serif;padding:40px} a{color:#2563eb} p{margin:0 0 40px} .btn{display:inline-block;padding:8px 14px;background:#eee}</style></head>
+<body>
+<p><a id="multi" href="/partner?x=1" target="_blank" rel="nofollow noopener  noreferrer sponsored ugc" title="Our partner" aria-label="Partner site">Partner link</a></p>
+<p><a id="plain" href="/plain">Plain link</a></p>
+<p><a id="nested" class="btn" href="https://example.com/nested" download><span id="nested-inner"><strong>Nested</strong> text</span></a></p>
+<p><a id="empty-rel" href="/e" rel="">Empty rel</a> <a id="second" href="/second" target="_self">Second link</a></p>
+<p id="dyn-host"></p>
+<p id="shadow-host"></p>
+<p><a id="nohref">Anchor without href</a></p>
+<script>
+setTimeout(() => {
+  const a = document.createElement('a');
+  a.id = 'dyn'; a.href = '/dynamic'; a.rel = 'ugc'; a.target = '_blank'; a.textContent = 'Dynamic link';
+  document.getElementById('dyn-host').appendChild(a);
+}, 300);
+const root = document.getElementById('shadow-host').attachShadow({ mode: 'open' });
+root.innerHTML = '<a id="sh" href="/in-shadow" rel="nofollow"><span id="sh-inner">Shadow link</span></a>';
+</script>
+</body></html>

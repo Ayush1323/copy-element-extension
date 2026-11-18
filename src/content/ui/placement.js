@@ -14,3 +14,17 @@ export function placeToolbar(rect, w, hgt, vw, vh) {
   if (r.bottom + hgt <= vh - pad) return { left, top: r.bottom, side: 'below' };
   return { left, top: clamp(r.top + 8, pad, Math.max(pad, vh - hgt - pad)), side: 'inside' };
 }
+
+export const LINK_PANEL_W = 320;
+
+/**
+ * Link info panel: flush below the link (so the pointer can travel into it), else above it
+ * (clearing the toolbar handle), else inside the viewport. Always fully visible.
+ */
+export function placeLinkPanel(rect, w, hgt, vw, vh, topClear = 28) {
+  const pad = 6;
+  const left = clamp(rect.left, pad, Math.max(pad, vw - w - pad));
+  if (rect.bottom + hgt <= vh - pad) return { left, top: Math.max(rect.bottom, pad), side: 'below' };
+  if (rect.top - topClear - hgt >= pad) return { left, top: rect.top - topClear - hgt, side: 'above' };
+  return { left, top: clamp(vh - hgt - pad, pad, Math.max(pad, vh - hgt - pad)), side: 'inside' };
+}

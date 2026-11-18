@@ -21,6 +21,8 @@ import { createToaster } from '../ui/toast.js';
 import { createIndicator } from '../ui/indicator.js';
 import { createSelectionButton } from '../ui/selection-button.js';
 import { createPreview } from '../ui/preview-panel.js';
+import { createLinkPanel } from '../ui/link-panel.js';
+import { findLinkAt, readLinkInfo } from './link-info.js';
 
 const MODE_DEFS = { element: elementMode, card: cardMode, section: sectionMode, text: textMode };
 const SWALLOWED = ['pointerdown', 'pointerup', 'mousedown', 'mouseup', 'dblclick', 'auxclick', 'touchstart', 'touchend'];
@@ -45,6 +47,7 @@ export function createPickerController() {
   let lastMutationUpdate = 0;
   let handleState = null; // { el, hovered } — the target the visible toolbar handle belongs to
   let handleTimer = 0;
+  let linkEl = null; // anchor whose attribute panel is showing
   let unsubStorage = null;
   let listeners = [];
 
@@ -63,6 +66,7 @@ export function createPickerController() {
     ui.setAccent(settings.highlightColor);
     parts = {
       highlight: createHighlight(ui),
+      linkPanel: createLinkPanel(ui, { onCopy: copyLinkPart }), // before the toolbar so the toolbar menu stacks above it
       toolbar: createToolbar(ui, { onAction: onToolbarAction }),
       toaster: createToaster(ui, () => settings.toastEnabled),
       selection: createSelectionButton(ui, { onCopy: copySelection }),
@@ -122,6 +126,7 @@ export function createPickerController() {
     clearTimeout(handleTimer);
     handleTimer = 0;
     handleState = null;
+    hideLinkNow();
     if (cursorStyle) cursorStyle.remove();
     cursorStyle = null;
   }
@@ -130,6 +135,7 @@ export function createPickerController() {
     if (parts) {
       parts.highlight.hide();
       parts.toolbar.hide();
+      parts.linkPanel.hideNow();
       parts.preview.close();
       parts.selection.hide();
       if (parts.indicator) parts.indicator.hide();
@@ -195,12 +201,53 @@ export function createPickerController() {
     let raw = null;
     try { raw = detectRaw(last.x, last.y); } catch (err) { logger.warn('detect failed', err); }
     if (!raw || ['BODY', 'HTML'].includes(tagOf(raw.el))) { clearHover(); return; }
+    syncLink(raw);
     const res = def().candidates(raw);
     const next = { raw, list: res.list, index: res.index, base: res.index, label: res.label || '', kind: res.kind || '' };
     if (hovered && hovered.list[hovered.index] === next.list[next.index]) {
       hovered.raw = raw; // same target: keep the user's ArrowUp/Down level
     } else hovered = next;
     renderHover(true);
+  }
+
+  /* ---------------- link attribute panel (Element Picker only) ---------------- */
+
+  function linkRect(a) {
+    const rects = Array.from(a.getClientRects()).filter((r) => r.width > 0 && r.height > 0);
+    // wrapped inline links: anchor the panel to the line box under the pointer
+    return rects.find((r) => last.x >= r.left && last.x <= r.right && last.y >= r.top && last.y <= r.bottom) || rects[0] || rectOf(a);
+  }
+
+  function syncLink(raw) {
+    if (!parts || mode !== MODES.ELEMENT) return;
+    let a = null;
+    try { a = findLinkAt(raw.el, last.x, last.y); } catch (_) { /* ignore */ }
+    if (!a) { parts.linkPanel.hideSoon(); return; }
+    const r = linkRect(a);
+    if (r.width === 0 && r.height === 0) { parts.linkPanel.hideSoon(); return; }
+    linkEl = a;
+    parts.linkPanel.show(readLinkInfo(a), r);
+  }
+
+  function hideLinkNow() {
+    linkEl = null;
+    if (parts && parts.linkPanel) parts.linkPanel.hideNow();
+  }
+
+  function trackLink() {
+    if (!linkEl || !parts) return;
+    if (!linkEl.isConnected) { hideLinkNow(); return; }
+    parts.linkPanel.reposition(linkRect(linkEl));
+  }
+
+  async function copyLinkPart(kind) {
+    if (!linkEl) return false;
+    const info = readLinkInfo(linkEl);
+    const text = kind === 'url' ? info.href : kind === 'rel' ? info.rel || '' : linkEl.outerHTML;
+    if (!text) return false;
+    const r = await writeClipboard({ text });
+    toast(r.ok ? `Copied ${kind === 'url' ? 'URL' : kind === 'rel' ? 'rel values' : 'link HTML'}` : r.error, r.ok ? 'success' : 'error');
+    return r.ok;
   }
 
   function targetEl() { return hovered ? hovered.list[hovered.index] : null; }
@@ -218,6 +265,7 @@ export function createPickerController() {
     if (!el || !el.isConnected || !parts) { if (el && !el.isConnected) { clearHover(); } return; }
     const r = rectFor(el);
     if (r.width === 0 && r.height === 0) { clearHover(); return; }
+    trackLink();
     const label = labelFor(el);
     parts.highlight.show(r, label, { showLabel: settings.showLabels && (!settings.toolbarEnabled || (!!handleState && handleState.el !== el)) });
     if (!settings.toolbarEnabled) hideToolbarNow();
@@ -269,6 +317,7 @@ export function createPickerController() {
     lastRectKey = '';
     if (!parts) return;
     parts.highlight.hide();
+    parts.linkPanel.hideSoon(); // linkEl is kept so the panel's copy buttons still work while the pointer travels to it
     cancelAnimationFrame(rafId);
     rafId = 0;
     if (handleState && parts.toolbar.isVisible()) deferToolbar(hideToolbarNow);

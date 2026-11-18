@@ -126,3 +126,26 @@ button { font: inherit; color: inherit; cursor: pointer; border: 0; background: 
 @keyframes slide { from { opacity: 0; transform: translateX(14px); } to { opacity: 1; transform: none; } }
 @keyframes pulse { 50% { box-shadow: 0 0 0 5px rgba(74,222,128,0); } }
 @media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
+
+/* ---- link attribute panel ---- */
+.linkp { position: fixed; left: 0; top: 0; width: 320px; max-height: calc(100vh - 12px); overflow: auto; pointer-events: auto; cursor: default; background: #fff; border: 1px solid var(--line); border-radius: 12px; padding: 8px 10px 10px; box-shadow: 0 10px 28px -8px rgba(11,30,63,.28), 0 2px 6px rgba(11,30,63,.08); animation: pop .12s ease-out; }
+/* invisible bridge so the pointer can travel from the link into the panel */
+.linkp::before { content: ""; position: absolute; left: 0; right: 0; top: -8px; height: 8px; }
+.linkp.above::before { top: auto; bottom: -8px; }
+.lp-head { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
+.lp-chip { padding: 2px 8px; border-radius: 6px; background: var(--soft); color: var(--accent); font-weight: 700; font-size: 10.5px; letter-spacing: .05em; }
+.lp-sub { color: var(--muted); font-size: 11px; }
+.lp-list { margin: 0; }
+.lp-row { position: relative; display: grid; grid-template-columns: 70px 1fr; gap: 8px; padding: 5px 24px 5px 0; border-top: 1px solid #F1F5F9; align-items: start; }
+.lp-row:first-child { border-top: 0; }
+.lp-k { margin: 0; color: var(--muted); font: 600 11px/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+.lp-v { margin: 0; min-width: 0; color: var(--ink); font-size: 12px; line-height: 1.45; word-break: break-all; overflow-wrap: anywhere; }
+.lp-v.none { color: #94A3B8; font-style: italic; }
+.lp-chips { display: flex; flex-wrap: wrap; gap: 4px; }
+.lp-rel { padding: 0 7px; border-radius: 999px; background: var(--soft); color: var(--accent); border: 1px solid #BFDBFE; font: 600 11px/18px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+.lp-copy { position: absolute; top: 4px; right: 0; width: 22px; height: 22px; border-radius: 6px; display: grid; place-items: center; color: var(--muted); }
+.lp-copy:hover, .lp-html:hover { background: var(--soft); color: var(--accent); }
+.lp-copy.ok, .lp-html.ok { color: var(--ok); }
+.lp-copy:focus-visible, .lp-html:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.lp-foot { padding-top: 6px; border-top: 1px solid #F1F5F9; }
+.lp-html { display: inline-flex; align-items: center; gap: 6px; height: 26px; padding: 0 9px; border-radius: 7px; border: 1px solid var(--line); color: #1e293b; font-weight: 600; font-size: 11.5px; }

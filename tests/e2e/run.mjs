@@ -192,6 +192,120 @@ await t('Escape exits picker and restores normal navigation', async () => {
 });
 await page.close();
 
+console.log('\nTest L — link attribute preview');
+await resetStorage();
+page = await openPage(`${base}/links.html`);
+const lp = async () => {
+  const h = await ui(page, '.linkp');
+  if (!h) return null;
+  return h.evaluate((e) => e.hidden ? null : ({
+    rows: [...e.querySelectorAll('.lp-row')].map((r) => [r.querySelector('.lp-k').textContent, r.querySelector('.lp-v').textContent.trim()]),
+    rels: [...e.querySelectorAll('.lp-rel')].map((x) => x.textContent),
+    box: (() => { const b = e.getBoundingClientRect(); return { x: b.x, y: b.y, w: b.width, h: b.height }; })(),
+  }));
+};
+// the panel can cover neighbouring links, so park the pointer away (panel hides) before each new target
+const hoverLink = async (sel) => { await page.mouse.move(1100, 700, { steps: 2 }); await sleep(380); return hover(page, sel); };
+const val = (d, k) => (d.rows.find((r) => r[0] === k) || [])[1];
+await activate(page, 'element');
+await t('link with multiple rel values shows every attribute and separate rel chips', async () => {
+  await hoverLink('#multi');
+  const d = await lp();
+  ok(d, 'panel visible');
+  eq(val(d, 'Text'), 'Partner link');
+  ok(val(d, 'href').endsWith('/partner?x=1') && val(d, 'href').startsWith('http'), val(d, 'href'));
+  eq(val(d, 'target'), '_blank');
+  eq(val(d, 'title'), 'Our partner');
+  eq(val(d, 'aria-label'), 'Partner site');
+  eq(val(d, 'download'), 'Not specified');
+  eq(d.rels.join(','), 'nofollow,noopener,noreferrer,sponsored,ugc');
+  ok(d.box.x >= 0 && d.box.y >= 0 && d.box.x + d.box.w <= 1280 && d.box.y + d.box.h <= 900, 'inside viewport ' + JSON.stringify(d.box));
+});
+await t('missing attributes read "Not specified"; panel updates immediately when moving to another link', async () => {
+  await hoverLink('#plain');
+  const d = await lp();
+  eq(val(d, 'Text'), 'Plain link');
+  for (const k of ['target', 'rel', 'title', 'download', 'aria-label']) eq(val(d, k), 'Not specified', k);
+  eq(d.rels.length, 0);
+});
+await t('moving straight from one link to another (panel not in the way) updates the panel', async () => {
+  await hoverLink('#empty-rel');
+  eq(val(await lp(), 'Text'), 'Empty rel');
+  const c = await center(page, '#second');
+  await page.mouse.move(c.x, c.y, { steps: 3 }); await sleep(450);
+  const d = await lp();
+  eq(val(d, 'Text'), 'Second link');
+  eq(val(d, 'target'), '_self');
+});
+await t('nested element inside a link resolves to the link (download present)', async () => {
+  await hoverLink('#nested-inner strong');
+  const d = await lp();
+  ok(d, 'panel visible');
+  ok(val(d, 'href').endsWith('example.com/nested'));
+  eq(val(d, 'download'), 'Present (no filename)');
+});
+await t('empty rel is shown as Empty, not invented', async () => {
+  await hoverLink('#empty-rel');
+  eq(val(await lp(), 'rel'), 'Empty');
+});
+await t('dynamically rendered link is detected', async () => {
+  await hoverLink('#dyn');
+  const d = await lp();
+  ok(d && val(d, 'href').endsWith('/dynamic'), JSON.stringify(d));
+  eq(d.rels.join(','), 'ugc');
+});
+await t('link inside an open Shadow DOM is detected', async () => {
+  const c = await page.evaluate(() => { const a = document.getElementById('shadow-host').shadowRoot.getElementById('sh-inner'); a.scrollIntoView({ block: 'center' }); const r = a.getBoundingClientRect(); return { x: r.x + r.width / 2, y: r.y + r.height / 2 }; });
+  await page.mouse.move(1100, 700); await sleep(380);
+  await page.mouse.move(c.x, c.y, { steps: 3 }); await sleep(450);
+  const d = await lp();
+  ok(d && val(d, 'href').endsWith('/in-shadow'), JSON.stringify(d));
+  eq(d.rels.join(','), 'nofollow');
+});
+await t('anchor without href is not treated as a link', async () => {
+  await hoverLink('#nohref');
+  await sleep(350);
+  eq(await lp(), null);
+});
+await t('pointer can travel from the link into the panel without it vanishing; copy buttons copy raw values', async () => {
+  await hoverLink('#multi');
+  const d0 = await lp();
+  const b = d0.box;
+  await page.mouse.move(b.x + b.w / 2, b.y + 20, { steps: 8 });
+  await sleep(500);
+  ok(await lp(), 'panel still visible over itself');
+  const urlBtn = await ui(page, '[data-copy="url"]');
+  const ub = await urlBtn.boundingBox();
+  await page.mouse.click(ub.x + ub.width / 2, ub.y + ub.height / 2); await sleep(300);
+  ok((await clip(page)).endsWith('/partner?x=1'), await clip(page));
+  const relBtn = await ui(page, '[data-copy="rel"]');
+  const rb = await relBtn.boundingBox();
+  await page.mouse.click(rb.x + rb.width / 2, rb.y + rb.height / 2); await sleep(300);
+  eq(await clip(page), 'nofollow noopener  noreferrer sponsored ugc');
+  const htmlBtn = await ui(page, '[data-copy="html"]');
+  const hb = await htmlBtn.boundingBox();
+  await page.mouse.click(hb.x + hb.width / 2, hb.y + hb.height / 2); await sleep(300);
+  ok((await clip(page)).startsWith('<a id="multi" href="/partner?x=1"'), await clip(page));
+  eq(page.url(), `${base}/links.html`, 'no navigation');
+});
+await t('panel hides when the pointer leaves the link and panel', async () => {
+  await page.mouse.move(5, 5, { steps: 3 }); await sleep(600);
+  eq(await lp(), null);
+});
+await t('clicking a link still copies and does not navigate (existing behaviour kept)', async () => {
+  const c = await center(page, '#plain');
+  await page.mouse.click(c.x, c.y); await sleep(300);
+  eq(await clip(page), 'Plain link');
+  eq(page.url(), `${base}/links.html`);
+});
+await t('panel disappears when the picker mode ends', async () => {
+  await hoverLink('#plain');
+  ok(await lp());
+  await page.keyboard.press('Escape'); await sleep(300);
+  ok(!(await hostExists(page)), 'host removed');
+});
+await page.close();
+
 console.log('\nTest B/C — card & section modes, rich format, preview, history, settings');
 await resetStorage();
 page = await openPage(`${base}/complex-section.html`);
