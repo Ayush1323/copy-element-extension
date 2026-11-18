@@ -1,6 +1,8 @@
-# MindInventory Instant Copy
+# LinkLens
 
-> **Select. Extract. Copy. Done.**
+> **Hover. Discover. Copy.**
+
+LinkLens is a smart browser extension that instantly reveals hyperlink destinations, HTML link attributes, and available link information when hovering over links on websites.
 
 A Manifest V3 Chrome extension for designers, developers and content teams. Hover any website content,
 see it highlighted, and copy a heading, paragraph, tag, whole **card** or whole **section** straight into

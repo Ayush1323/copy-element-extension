@@ -3,7 +3,7 @@ import { createPickerController } from './core/picker-controller.js';
 import { logger } from '../utils/logger.js';
 
 (function bootstrap() {
-  const KEY = '__miInstantCopy';
+  const KEY = '__linkLens';
   if (window[KEY]) return; // already injected in this frame
   const controller = createPickerController();
   Object.defineProperty(window, KEY, { value: controller, enumerable: false });

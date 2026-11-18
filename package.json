@@ -1,7 +1,7 @@
 {
-  "name": "mindinventory-instant-copy",
+  "name": "linklens",
   "version": "1.0.0",
-  "description": "Select. Extract. Copy. Done. \u2014 smart website content extraction for designers.",
+  "description": "LinkLens \u2014 Hover. Discover. Copy.",
   "private": true,
   "type": "module",
   "scripts": {

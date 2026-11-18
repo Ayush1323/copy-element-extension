@@ -6,8 +6,8 @@ export function renderHeader(root, { version, onSettings }) {
     <div class="brand">
       <span class="logo">${LOGO_SVG}</span>
       <div class="brand-text">
-        <div class="brand-name">MindInventory <b>Instant Copy</b></div>
-        <div class="brand-tag">Select. Extract. Copy. Done.</div>
+        <div class="brand-name">Link<b>Lens</b></div>
+        <div class="brand-tag">Hover. Discover. Copy.</div>
       </div>
     </div>
     <span class="version">v${escapeHtml(version)}</span>

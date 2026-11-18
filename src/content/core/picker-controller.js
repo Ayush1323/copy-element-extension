@@ -109,8 +109,8 @@ export function createPickerController() {
       ro = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(() => renderHover()) : null;
 
       cursorStyle = document.createElement('style');
-      cursorStyle.setAttribute('data-mi-instant-copy', 'cursor');
-      cursorStyle.textContent = 'html *:not(mi-instant-copy-root){cursor:crosshair !important;}';
+      cursorStyle.setAttribute('data-linklens', 'cursor');
+      cursorStyle.textContent = 'html *:not(linklens-root){cursor:crosshair !important;}';
       document.documentElement.appendChild(cursorStyle);
     }
   }
@@ -476,7 +476,7 @@ export function createPickerController() {
     const sel = window.getSelection();
     if (mouseDown || !sel || sel.isCollapsed || !sel.toString().trim() || sel.rangeCount === 0) { parts.selection.hide(); return; }
     const anchor = sel.anchorNode && (sel.anchorNode.nodeType === 1 ? sel.anchorNode : sel.anchorNode.parentElement);
-    if (anchor && tagOf(anchor) === 'MI-INSTANT-COPY-ROOT') return;
+    if (anchor && tagOf(anchor) === 'LINKLENS-ROOT') return;
     if (anchor && isEditable(anchor)) { parts.selection.hide(); return; }
     const range = sel.getRangeAt(sel.rangeCount - 1);
     const rects = range.getClientRects();

@@ -4,7 +4,7 @@ import { MODE_META } from '../../shared/constants.js';
 
 export function createIndicator(ui, { onMode, onExit }) {
   const el = h('div', 'indicator', `
-    <span class="dot"></span><span class="ind-title">Instant Copy</span>
+    <span class="dot"></span><span class="ind-title">LinkLens</span>
     <div class="seg" role="tablist">
       <button data-m="element" title="Element Picker (Alt+E)">${icon('pointer', 13)}<span>Element</span></button>
       <button data-m="card" title="Card Extractor">${icon('card', 13)}<span>Card</span></button>
@@ -24,7 +24,7 @@ export function createIndicator(ui, { onMode, onExit }) {
     show(mode) {
       el.hidden = false;
       el.querySelectorAll('[data-m]').forEach((b) => b.classList.toggle('on', b.dataset.m === mode));
-      el.querySelector('.ind-title').textContent = MODE_META[mode] ? MODE_META[mode].label : 'Instant Copy';
+      el.querySelector('.ind-title').textContent = MODE_META[mode] ? MODE_META[mode].label : 'LinkLens';
     },
     hide() { el.hidden = true; },
   };

@@ -1,6 +1,6 @@
-export const APP_NAME = 'MindInventory Instant Copy';
-export const TAGLINE = 'Select. Extract. Copy. Done.';
-export const HOST_TAG = 'mi-instant-copy-root';
+export const APP_NAME = 'LinkLens';
+export const TAGLINE = 'Hover. Discover. Copy.';
+export const HOST_TAG = 'linklens-root';
 
 export const MODES = Object.freeze({
   ELEMENT: 'element',

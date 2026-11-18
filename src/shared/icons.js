@@ -1,3 +1,5 @@
+import { logoSvg } from './logo.js';
+
 // Original inline SVG icons (24x24, stroke based, Lucide-style geometry).
 const P = {
   pointer: '<path d="M5 3.5l14 6.2-5.6 1.9-1.9 5.7z"/><path d="M13.8 13.8L19 19"/>',
@@ -26,4 +28,5 @@ export function icon(name, size = 18, extra = '') {
   return `<svg class="ic ${extra}" width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">${P[name] || ''}</svg>`;
 }
 
-export const LOGO_SVG = `<svg width="28" height="28" viewBox="0 0 32 32" aria-hidden="true"><defs><linearGradient id="mi-g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#0B1E3F"/><stop offset="1" stop-color="#2563EB"/></linearGradient></defs><rect width="32" height="32" rx="8" fill="url(#mi-g)"/><rect x="13" y="12.5" width="11" height="11" rx="2.6" fill="#fff"/><path d="M9 19.5V11a2.6 2.6 0 012.6-2.6H19" fill="none" stroke="#fff" stroke-opacity=".7" stroke-width="2" stroke-linecap="round"/></svg>`;
+export const LOGO_SVG = logoSvg({ size: 28, id: 'll' });
+export const LOGO_SVG_LG = logoSvg({ size: 40, id: 'llg' });

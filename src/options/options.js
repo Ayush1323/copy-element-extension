@@ -1,6 +1,6 @@
 import { DEFAULT_SETTINGS } from '../shared/constants.js';
 import { getSettings, saveSettings, resetSettings, getHistory, clearHistory } from '../shared/storage.js';
-import { LOGO_SVG } from '../shared/icons.js';
+import { LOGO_SVG_LG as LOGO_SVG } from '../shared/icons.js';
 
 const PRESETS = ['#2563EB', '#7C3AED', '#0891B2', '#16A34A', '#F59E0B', '#E11D48'];
 const $ = (s, r = document) => r.querySelector(s);

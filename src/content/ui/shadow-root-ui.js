@@ -7,7 +7,7 @@ import { HOST_TAG } from '../../shared/constants.js';
  */
 export function createShadowUI() {
   const host = document.createElement(HOST_TAG);
-  host.setAttribute('data-mi-instant-copy', '');
+  host.setAttribute('data-linklens', '');
   host.style.cssText = 'all:initial!important;position:fixed!important;top:0!important;left:0!important;width:0!important;height:0!important;z-index:2147483647!important;display:block!important;';
   const root = host.attachShadow({ mode: 'closed' });
   const style = document.createElement('style');

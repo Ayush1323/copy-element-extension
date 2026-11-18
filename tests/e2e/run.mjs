@@ -88,7 +88,7 @@ const setSettings = (patch) => helper.evaluate(async (p) => {
   await chrome.storage.local.set({ mi_settings: { ...cur, ...p } });
 }, patch);
 const resetStorage = () => helper.evaluate(() => chrome.storage.local.clear());
-const hostExists = (page) => page.evaluate(() => !!document.querySelector('mi-instant-copy-root'));
+const hostExists = (page) => page.evaluate(() => !!document.querySelector('linklens-root'));
 const clip = (page) => page.evaluate(() => navigator.clipboard.readText());
 const clipHtml = (page) => page.evaluate(async () => {
   for (const item of await navigator.clipboard.read()) if (item.types.includes('text/html')) return await (await item.getType('text/html')).text();
@@ -406,7 +406,7 @@ await t('popup renders actions, status, activity and has no console errors', asy
   await helper.goto(`chrome-extension://${extId}/popup/popup.html`);
   await helper.waitForSelector('.action');
   eq((await helper.$$('.action')).length, 4);
-  ok(await helper.$eval('.welcome h1', (e) => e.textContent.includes('Copy website content effortlessly.')));
+  ok(await helper.$eval('.welcome h1', (e) => e.textContent.includes('Hover. Discover. Copy.')));
   ok((await helper.$$('#activity li')).length >= 1, 'activity lists recent copies');
   await helper.screenshot({ path: join(tmp, 'popup.png') });
 });

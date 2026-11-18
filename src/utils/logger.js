@@ -1,4 +1,4 @@
-const PREFIX = '[Instant Copy]';
+const PREFIX = '[LinkLens]';
 let debug = false;
 export const logger = {
   setDebug(v) { debug = !!v; },
