@@ -14,14 +14,14 @@ Object.values((m.action && m.action.default_icon) || {}).forEach((f) => need(f, 
 need(m.action.default_popup, 'popup');
 need(m.options_ui.page, 'options page');
 need(m.background.service_worker, 'service worker');
-for (const html of [m.action.default_popup, m.options_ui.page]) {
+for (const html of [m.action.default_popup, m.options_ui.page, 'preview/preview.html']) {
   const src = readFileSync(join(dist, html), 'utf8');
   for (const [, ref] of src.matchAll(/(?:src|href)="([^"#]+)"/g)) {
     if (/^https?:/.test(ref)) errors.push(`${html} references remote resource ${ref}`);
     else need(join(dirname(html), ref), `${html} reference`);
   }
 }
-for (const f of ['content/index.js', 'background/service-worker.js', 'popup/popup.js', 'options/options.js']) {
+for (const f of ['content/index.js', 'background/service-worker.js', 'popup/popup.js', 'options/options.js', 'preview/preview.js', 'preview/preview.html']) {
   need(f, 'bundle');
   if (existsSync(join(dist, f))) {
     const code = readFileSync(join(dist, f), 'utf8');
@@ -30,7 +30,9 @@ for (const f of ['content/index.js', 'background/service-worker.js', 'popup/popu
   }
 }
 const perms = m.permissions || [];
-if (m.host_permissions || perms.includes('tabs') || perms.includes('<all_urls>')) errors.push('unexpected broad permissions');
+if (m.host_permissions || perms.includes('tabs') || perms.includes('<all_urls>')) errors.push('unexpected broad permissions (all-sites access must stay optional)');
+const allowedOptional = ['<all_urls>'];
+if ((m.optional_host_permissions || []).some((p) => !allowedOptional.includes(p))) errors.push('unexpected optional host permissions');
 
 if (errors.length) { console.error('✗ dist verification failed:\n  ' + errors.join('\n  ')); process.exit(1); }
 console.log(`✔ dist OK — manifest v${m.version}, permissions: ${perms.join(', ')}`);

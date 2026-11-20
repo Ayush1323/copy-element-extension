@@ -60,3 +60,23 @@ export function readLinkInfo(a) {
 export function linkSignature(info) {
   return JSON.stringify([info.text, info.hrefRaw, info.href, info.target, info.rel, info.title, info.download, info.ariaLabel]);
 }
+
+// Loading a destination on hover is a real GET request, so never do it for links that look like actions.
+const ACTION_RE = /(^|[/_.\-?&=])(log[-_]?out|sign[-_]?out|log[-_]?off|unsubscribe|delete|remove|revoke|disconnect|deactivate|cancel)($|[/_.\-?&=#])/i;
+
+/**
+ * Should the hover preview load this link? Returns { ok, url?, cross? } or { ok:false, reason }.
+ * Only http(s) pages, never downloads, the current page, insecure content on https pages, or action-looking URLs.
+ */
+export function previewDecision(info, pageHref = location.href) {
+  if (info.hrefRaw == null) return { ok: false, reason: '' };
+  let u;
+  let here;
+  try { u = new URL(info.href); here = new URL(pageHref); } catch (_) { return { ok: false, reason: 'Invalid link' }; }
+  if (!/^https?:$/.test(u.protocol)) return { ok: false, reason: `${u.protocol.replace(':', '')} links have no preview` };
+  if (info.download != null) return { ok: false, reason: 'Download link, not previewed' };
+  if (u.origin === here.origin && u.pathname === here.pathname && u.search === here.search) return { ok: false, reason: 'Same page' };
+  if (here.protocol === 'https:' && u.protocol === 'http:') return { ok: false, reason: 'Insecure (http) page: cannot be previewed from an https page' };
+  if (ACTION_RE.test(u.pathname) || ACTION_RE.test(u.search)) return { ok: false, reason: 'Looks like an action link (log out, delete…): not loaded' };
+  return { ok: true, url: u.href, cross: u.origin !== here.origin };
+}

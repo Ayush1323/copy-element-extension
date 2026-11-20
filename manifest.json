@@ -27,22 +27,51 @@
   "background": {
     "service_worker": "background/service-worker.js"
   },
-  "permissions": ["activeTab", "scripting", "storage", "clipboardWrite"],
+  "permissions": [
+    "activeTab",
+    "scripting",
+    "storage",
+    "clipboardWrite",
+    "declarativeNetRequestWithHostAccess"
+  ],
   "commands": {
     "activate-element-picker": {
-      "suggested_key": { "default": "Alt+E", "mac": "Alt+E" },
+      "suggested_key": {
+        "default": "Alt+E",
+        "mac": "Alt+E"
+      },
       "description": "Activate Element Picker"
     },
     "copy-hovered": {
-      "suggested_key": { "default": "Alt+C", "mac": "Alt+C" },
+      "suggested_key": {
+        "default": "Alt+C",
+        "mac": "Alt+C"
+      },
       "description": "Copy hovered element"
     },
     "activate-section-picker": {
-      "suggested_key": { "default": "Alt+S", "mac": "Alt+S" },
+      "suggested_key": {
+        "default": "Alt+S",
+        "mac": "Alt+S"
+      },
       "description": "Activate Section Extractor"
     }
   },
   "content_security_policy": {
     "extension_pages": "script-src 'self'; object-src 'self'"
-  }
+  },
+  "optional_host_permissions": [
+    "<all_urls>"
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": [
+        "preview/preview.html",
+        "preview/preview.js"
+      ],
+      "matches": [
+        "<all_urls>"
+      ]
+    }
+  ]
 }

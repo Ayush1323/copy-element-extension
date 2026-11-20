@@ -56,7 +56,29 @@ async function init() {
   settings = await getSettings();
   render();
   refreshHistory();
-  document.querySelectorAll('input[type=checkbox][data-key]').forEach((i) => i.addEventListener('change', () => update({ [i.dataset.key]: i.checked })));
+  document.querySelectorAll('input[type=checkbox][data-key]:not([data-perm])').forEach((i) => i.addEventListener('change', () => update({ [i.dataset.key]: i.checked })));
+  const anySite = $('input[data-perm="all-sites"]');
+  anySite.addEventListener('change', async () => {
+    if (anySite.checked) {
+      let granted = false;
+      try { granted = await chrome.permissions.request({ origins: ['<all_urls>'] }); } catch (_) { /* noop */ }
+      if (!granted) { await update({ linkPreviewAnySite: false }); flashSaved('Permission not granted'); return; }
+      await update({ linkPreviewAnySite: true, linkPreview: true });
+    } else {
+      try { await chrome.permissions.remove({ origins: ['<all_urls>'] }); } catch (_) { /* noop */ }
+      await update({ linkPreviewAnySite: false });
+    }
+  });
+  // keep the switch honest if the permission was revoked from chrome://extensions
+  try {
+    const has = await chrome.permissions.contains({ origins: ['<all_urls>'] });
+    if (settings.linkPreviewAnySite && !has) { settings = await saveSettings({ linkPreviewAnySite: false }); render(); }
+  } catch (_) { /* noop */ }
+  if (location.hash === '#anysite') {
+    const row = $('#row-anysite');
+    row.scrollIntoView({ block: 'center' });
+    row.classList.add('flash');
+  }
   document.querySelectorAll('.seg[data-key]').forEach((seg) => seg.addEventListener('click', (e) => {
     const b = e.target.closest('button');
     if (b) update({ [seg.dataset.key]: b.dataset.v });

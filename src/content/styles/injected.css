@@ -129,14 +129,17 @@ button { font: inherit; color: inherit; cursor: pointer; border: 0; background: 
 
 /* ---- link attribute panel ---- */
 .linkp { position: fixed; left: 0; top: 0; width: 320px; max-height: calc(100vh - 12px); overflow: auto; pointer-events: auto; cursor: default; background: #fff; border: 1px solid var(--line); border-radius: 12px; padding: 8px 10px 10px; box-shadow: 0 10px 28px -8px rgba(11,30,63,.28), 0 2px 6px rgba(11,30,63,.08); animation: pop .12s ease-out; }
-/* invisible bridge so the pointer can travel from the link into the panel */
-.linkp::before { content: ""; position: absolute; left: 0; right: 0; top: -8px; height: 8px; }
-.linkp.above::before { top: auto; bottom: -8px; }
+/* invisible bridge so the pointer can travel from the link into the panel, on whichever side it touches */
+.linkp::before { content: ""; position: absolute; display: none; }
+.linkp[data-edge="top"]::before { display: block; left: 0; right: 0; top: calc(-1 * var(--gap, 8px)); height: var(--gap, 8px); }
+.linkp[data-edge="bottom"]::before { display: block; left: 0; right: 0; bottom: calc(-1 * var(--gap, 8px)); height: var(--gap, 8px); }
+.linkp[data-edge="left"]::before { display: block; top: 0; bottom: 0; left: calc(-1 * var(--gap, 8px)); width: var(--gap, 8px); }
+.linkp[data-edge="right"]::before { display: block; top: 0; bottom: 0; right: calc(-1 * var(--gap, 8px)); width: var(--gap, 8px); }
 .lp-head { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
 .lp-chip { padding: 2px 8px; border-radius: 6px; background: var(--soft); color: var(--accent); font-weight: 700; font-size: 10.5px; letter-spacing: .05em; }
 .lp-sub { color: var(--muted); font-size: 11px; }
 .lp-list { margin: 0; }
-.lp-row { position: relative; display: grid; grid-template-columns: 70px 1fr; gap: 8px; padding: 5px 24px 5px 0; border-top: 1px solid #F1F5F9; align-items: start; }
+.lp-row { position: relative; display: grid; grid-template-columns: 70px 1fr; gap: 8px; padding: 4px 24px 4px 0; border-top: 1px solid #F1F5F9; align-items: start; }
 .lp-row:first-child { border-top: 0; }
 .lp-k { margin: 0; color: var(--muted); font: 600 11px/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
 .lp-v { margin: 0; min-width: 0; color: var(--ink); font-size: 12px; line-height: 1.45; word-break: break-all; overflow-wrap: anywhere; }
@@ -159,3 +162,19 @@ button { font: inherit; color: inherit; cursor: pointer; border: 0; background: 
 .it-list { margin: 0; display: grid; grid-template-columns: auto 1fr; gap: 3px 12px; }
 .it-list dt { color: var(--muted); font-size: 11.5px; white-space: nowrap; margin: 0; }
 .it-list dd { margin: 0; color: var(--ink); font-size: 12px; font-weight: 500; word-break: break-all; overflow-wrap: anywhere; }
+
+/* ---- link destination preview ---- */
+.lp-prev { margin-top: 8px; padding-top: 8px; border-top: 1px solid #F1F5F9; }
+.lp-frame { position: relative; width: 100%; aspect-ratio: 1024 / 640; overflow: hidden; border: 1px solid var(--line); border-radius: 8px; background: #F8FAFC; }
+.lp-frame iframe { position: absolute; left: 0; top: 0; width: 1024px; height: 640px; border: 0; background: #fff; transform-origin: 0 0; pointer-events: none; }
+.lp-ph { position: absolute; inset: 0; display: grid; place-items: center; padding: 12px; text-align: center; color: var(--muted); font-size: 11.5px; }
+.lp-frame-click { position: absolute; inset: 0; z-index: 2; cursor: pointer; background: transparent; border: 0; }
+.lp-frame-click:hover { box-shadow: inset 0 0 0 2px var(--accent); border-radius: 8px; }
+.lp-prev-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; margin-top: 6px; }
+.lp-prev-note { flex: 1 1 100%; color: var(--muted); font-size: 10.5px; line-height: 1.3; min-width: 0; }
+.lp-prev-note:empty { display: none; }
+.lp-prev-bar .lp-open { margin-left: auto; }
+.lp-open { flex: none; display: inline-flex; align-items: center; gap: 5px; height: 24px; padding: 0 8px; border-radius: 7px; border: 1px solid var(--line); color: #1e293b; font-weight: 600; font-size: 11px; }
+.lp-open:hover { background: var(--soft); color: var(--accent); }
+.lp-enable { flex: none; height: 24px; padding: 0 8px; border-radius: 7px; background: var(--accent); color: #fff; font-weight: 600; font-size: 11px; white-space: nowrap; }
+.lp-enable:hover { background: color-mix(in srgb, var(--accent) 88%, #000); }

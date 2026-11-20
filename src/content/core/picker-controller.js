@@ -70,7 +70,7 @@ export function createPickerController() {
     ui.setAccent(settings.highlightColor);
     parts = {
       highlight: createHighlight(ui),
-      linkPanel: createLinkPanel(ui, { onCopy: copyLinkPart }), // before the toolbar so the toolbar menu stacks above it
+      linkPanel: createLinkPanel(ui, { onCopy: copyLinkPart, onEnableFull: () => { try { chrome.runtime.sendMessage({ type: MSG.OPEN_OPTIONS }); } catch (_) { /* context invalidated */ } }, onLeave: (e) => { overUI = false; last = { x: e.clientX, y: e.clientY }; scheduleUpdate(); } }), // before the toolbar so the toolbar menu stacks above it
       imageTip: createImageTip(ui),
       toolbar: createToolbar(ui, { onAction: onToolbarAction }),
       toaster: createToaster(ui, () => settings.toastEnabled),
@@ -272,18 +272,49 @@ export function createPickerController() {
     return rects.find((r) => last.x >= r.left && last.x <= r.right && last.y >= r.top && last.y <= r.bottom) || rects[0] || rectOf(a);
   }
 
+  /** Hover intent: a link panel appears only once the pointer has stayed on the link for a moment, so sweeping the
+   *  pointer across a line of links never flashes panels that then land on the thing you are aiming at. */
+  const LINK_INTENT_MS = 140;
+  let linkIntentEl = null;
+  let linkIntentTimer = 0;
+
+  function cancelLinkIntent() {
+    clearTimeout(linkIntentTimer);
+    linkIntentTimer = 0;
+    linkIntentEl = null;
+  }
+
+  function showLinkPanel(a) {
+    if (!parts) return;
+    const r = linkRect(a);
+    if (r.width === 0 && r.height === 0) { parts.linkPanel.hideSoon(); return; }
+    linkEl = a;
+    parts.linkPanel.show(readLinkInfo(a), r, { preview: !!settings.linkPreview, anySite: !!settings.linkPreviewAnySite, pointer: last.x >= 0 ? { x: last.x, y: last.y } : null });
+  }
+
   function syncLink(raw) {
     if (!parts || mode !== MODES.ELEMENT) return;
     let a = null;
     try { a = findLinkAt(raw.el, last.x, last.y); } catch (_) { /* ignore */ }
-    if (!a) { parts.linkPanel.hideSoon(); return; }
-    const r = linkRect(a);
-    if (r.width === 0 && r.height === 0) { parts.linkPanel.hideSoon(); return; }
-    linkEl = a;
-    parts.linkPanel.show(readLinkInfo(a), r);
+    if (!a) { cancelLinkIntent(); parts.linkPanel.hideSoon(); return; }
+    // already showing (this or another link): update immediately, no delay
+    if (parts.linkPanel.isVisible()) { cancelLinkIntent(); showLinkPanel(a); return; }
+    if (linkIntentEl === a) return; // still waiting for the pointer to settle
+    cancelLinkIntent();
+    linkIntentEl = a;
+    linkIntentTimer = setTimeout(() => {
+      linkIntentTimer = 0;
+      const want = linkIntentEl;
+      linkIntentEl = null;
+      if (!want || !parts || mode !== MODES.ELEMENT || overUI) return;
+      let now = null;
+      try { now = findLinkAt(null, last.x, last.y); } catch (_) { /* ignore */ }
+      if (now === want) showLinkPanel(want);
+    }, LINK_INTENT_MS);
   }
 
   function hideLinkNow() {
+    cancelLinkIntent();
     linkEl = null;
     if (parts && parts.linkPanel) parts.linkPanel.hideNow();
   }

@@ -19,6 +19,8 @@ export const DEFAULT_SETTINGS = Object.freeze({
   highlightColor: '#2563EB',
   showLabels: true,
   toastEnabled: true,
+  linkPreviewAnySite: false, // previews of sites that forbid embedding (needs the optional all-sites permission)
+  linkPreview: true, // small live preview of a hovered link's destination (Element Picker)
   extractionBehavior: 'instant', // card/section: 'instant' | 'preview'
   headingStyle: 'plain', // 'plain' | 'markdown'
   includeButtons: true,

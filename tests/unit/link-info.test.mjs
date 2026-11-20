@@ -59,3 +59,20 @@ test('link panel placement stays in the viewport', () => {
   assert.equal(placeLinkPanel(cases[0], w, h, vw, vh).side, 'below');
   assert.equal(placeLinkPanel(cases[1], w, h, vw, vh).side, 'above');
 });
+
+test('previewDecision only previews safe, real destinations', async () => {
+  const { previewDecision } = await import('../../src/content/core/link-info.js');
+  const info = (href, extra = {}) => ({ hrefRaw: href, href: new URL(href, 'https://site.test/a/').href, download: null, ...extra });
+  const page = 'https://site.test/a/';
+  assert.deepEqual(previewDecision(info('/pricing'), page), { ok: true, url: 'https://site.test/pricing', cross: false });
+  assert.equal(previewDecision(info('https://other.test/x'), page).cross, true);
+  assert.equal(previewDecision(info('/a/'), page).reason, 'Same page');
+  assert.match(previewDecision(info('mailto:hi@x.test'), page).reason, /mailto/);
+  assert.match(previewDecision(info('/files/a.zip', { download: '' }), page).reason, /Download/);
+  assert.match(previewDecision(info('http://insecure.test/'), page).reason, /Insecure/);
+  for (const bad of ['/account/logout', '/sign-out', '/users/1/delete', '/x?action=unsubscribe', '/cart/remove?id=3']) {
+    assert.match(previewDecision(info(bad), page).reason, /action link/, bad);
+  }
+  assert.equal(previewDecision(info('/blog/log-analysis'), page).ok, true); // "log" alone is fine
+  assert.equal(previewDecision({ hrefRaw: null }, page).ok, false);
+});

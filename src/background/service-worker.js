@@ -1,6 +1,7 @@
 import { MSG } from '../shared/message-types.js';
 import { MODES } from '../shared/constants.js';
 import { isRestrictedUrl } from '../shared/helpers.js';
+import { STORAGE_KEYS } from '../shared/constants.js';
 
 const CONTENT_FILE = 'content/index.js';
 
@@ -53,11 +54,71 @@ function friendly(e) {
   return m;
 }
 
+/* ---------- link preview of sites that forbid embedding ----------
+ * Opt-in: needs the optional all-sites permission (asked in Settings) and the "linkPreviewAnySite" setting.
+ * The rule only ever matches sub-frame requests *initiated by this extension's own preview page*, so normal
+ * browsing keeps every site's X-Frame-Options / CSP protections. */
+
+const PREVIEW_RULE_ID = 4101;
+const PREVIEW_RULE = {
+  id: PREVIEW_RULE_ID,
+  priority: 1,
+  action: {
+    type: 'modifyHeaders',
+    responseHeaders: [
+      { header: 'x-frame-options', operation: 'remove' },
+      { header: 'content-security-policy', operation: 'remove' },
+      { header: 'content-security-policy-report-only', operation: 'remove' },
+    ],
+  },
+  condition: { initiatorDomains: [chrome.runtime.id], resourceTypes: ['sub_frame'], regexFilter: '^https?://' },
+};
+
+export async function syncPreviewRule() {
+  try {
+    const res = await chrome.storage.local.get(STORAGE_KEYS.SETTINGS);
+    const enabled = !!(res[STORAGE_KEYS.SETTINGS] && res[STORAGE_KEYS.SETTINGS].linkPreviewAnySite);
+    let allowed = false;
+    try { allowed = await chrome.permissions.contains({ origins: ['<all_urls>'] }); } catch (_) { /* noop */ }
+    await chrome.declarativeNetRequest.updateDynamicRules({
+      removeRuleIds: [PREVIEW_RULE_ID],
+      addRules: enabled && allowed ? [PREVIEW_RULE] : [],
+    });
+  } catch (_) { /* DNR unavailable: previews fall back to plain frames */ }
+}
+
+async function previewToken() {
+  const got = await chrome.storage.session.get('miPreviewToken');
+  if (got.miPreviewToken) return got.miPreviewToken;
+  const t = crypto.randomUUID();
+  await chrome.storage.session.set({ miPreviewToken: t });
+  return t;
+}
+
+syncPreviewRule();
+chrome.runtime.onInstalled.addListener(syncPreviewRule);
+chrome.runtime.onStartup.addListener(syncPreviewRule);
+chrome.permissions.onAdded.addListener(syncPreviewRule);
+chrome.permissions.onRemoved.addListener(syncPreviewRule);
+chrome.storage.onChanged.addListener((changes, area) => { if (area === 'local' && changes[STORAGE_KEYS.SETTINGS]) syncPreviewRule(); });
+
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (!msg) return false;
   if (msg.type === MSG.ACTIVATE) {
     activate(msg.tabId, msg.mode, { toggle: msg.toggle !== false }).then(sendResponse);
     return true;
+  }
+  if (msg.type === MSG.PREVIEW_TOKEN && sender.tab) {
+    previewToken().then((token) => sendResponse({ token }), () => sendResponse({ token: '' }));
+    return true;
+  }
+  if (msg.type === MSG.PREVIEW_CHECK && sender.url && sender.url.startsWith(chrome.runtime.getURL('preview/preview.html'))) {
+    previewToken().then((token) => sendResponse({ ok: !!msg.token && msg.token === token }), () => sendResponse({ ok: false }));
+    return true;
+  }
+  if (msg.type === MSG.OPEN_OPTIONS) {
+    chrome.tabs.create({ url: chrome.runtime.getURL('options/options.html#anysite') });
+    return false;
   }
   if (msg.type === MSG.MODE_CHANGED && sender.tab) {
     const tabId = sender.tab.id;

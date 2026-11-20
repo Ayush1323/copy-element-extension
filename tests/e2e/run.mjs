@@ -17,7 +17,7 @@ rmSync(tmp, { recursive: true, force: true });
 mkdirSync(tmp, { recursive: true });
 cpSync(join(root, 'dist'), join(tmp, 'ext'), { recursive: true });
 const mf = JSON.parse(readFileSync(join(tmp, 'ext/manifest.json'), 'utf8'));
-mf.host_permissions = ['http://localhost/*', 'https://www.mindinventory.com/*'];
+mf.host_permissions = ['<all_urls>']; // the optional all-sites permission, pre-granted for tests
 writeFileSync(join(tmp, 'ext/manifest.json'), JSON.stringify(mf));
 // Production uses a *closed* shadow root. For tests only, open it so puppeteer can query the extension UI.
 const cs = join(tmp, 'ext/content/index.js');
@@ -26,8 +26,11 @@ if (!/mode:"closed"/.test(bundle)) throw new Error('closed shadow root marker no
 writeFileSync(cs, bundle.replace('mode:"closed"', 'mode:"open"'));
 
 const fixtures = join(root, 'tests/fixtures');
+const hits = [];
 const server = http.createServer((req, res) => {
   const p = req.url.split('?')[0];
+  hits.push(p);
+  if (p === '/blocked') { res.setHeader('content-type', 'text/html'); res.setHeader('x-frame-options', 'DENY'); res.setHeader('content-security-policy', "frame-ancestors 'none'"); return res.end('<title>BLOCKED-PAGE</title><h1>blocked</h1>'); }
   if (p.startsWith('/nav')) { res.setHeader('content-type', 'text/html'); return res.end('<title>NAVIGATED</title><h1>navigated</h1>'); }
   try {
     res.setHeader('content-type', 'text/html');
@@ -62,12 +65,12 @@ async function openPage(url, { stubExternal = true } = {}) {
   const page = await browser.newPage();
   page.on('dialog', (d) => d.dismiss());
   page.on('pageerror', (e) => consoleErrors.push(`${url}: ${e.message}`));
-  page.on('console', (m) => { if (m.type() === 'error' && !/Failed to load resource|net::ERR/.test(m.text())) consoleErrors.push(`${url}: ${m.text()}`); });
+  page.on('console', (m) => { if (m.type() === 'error' && !/Failed to load resource|net::ERR|violates the following Content Security Policy directive: "frame-ancestors/.test(m.text())) consoleErrors.push(`${url}: ${m.text()}`); });
   if (stubExternal) {
     await page.setRequestInterception(true);
     page.on('request', (r) => {
       const u = r.url();
-      if (u.startsWith(base) || u.startsWith('data:')) r.continue();
+      if (u.startsWith(base) || u.startsWith(base.replace('localhost', '127.0.0.1')) || u.startsWith('data:')) r.continue();
       else r.respond({ status: 200, contentType: 'text/html', body: '<title>EXTERNAL</title>' });
     });
   }
@@ -147,7 +150,15 @@ await t('each tag is detected individually', async () => {
     await page.mouse.move(b.x + b.width / 2, b.y + b.height / 2, { steps: 2 }); await sleep(450);
     eq(await uiText(page, '.tb-chip'), 'TEXT');
     await page.mouse.click(b.x + b.width / 2, b.y + b.height / 2); await sleep(250);
-    eq(await clip(page), wanted[i]);
+    const got = await clip(page);
+    if (got !== wanted[i]) {
+      const diag = await page.evaluate((x, y) => {
+        const sr = document.querySelector('linklens-root').shadowRoot;
+        const q = (s) => { const e = sr.querySelector(s); if (!e || e.hidden) return null; const r = e.getBoundingClientRect(); return [r.x, r.y, r.width, r.height].map(Math.round); };
+        return JSON.stringify({ pointer: [Math.round(x), Math.round(y)], linkp: q('.linkp'), tb: q('.tb'), handle: q('.handle'), stack: document.elementsFromPoint(x, y).slice(0, 3).map((e) => e.localName) });
+      }, b.x + b.width / 2, b.y + b.height / 2);
+      throw new Error(`tag ${i}: expected ${JSON.stringify(wanted[i])} got ${JSON.stringify(got)} ${diag}`);
+    }
   }
 });
 await t('toolbar "Copy Card" copies the full card with outcomes (hovering empty card space)', async () => {
@@ -292,7 +303,157 @@ await t('panel hides when the pointer leaves the link and panel', async () => {
   await page.mouse.move(5, 5, { steps: 3 }); await sleep(600);
   eq(await lp(), null);
 });
+const previewState = () => page.evaluate(() => {
+  const host = document.querySelector('linklens-root');
+  const sr = host && host.shadowRoot;
+  const prev = sr && sr.querySelector('.lp-prev');
+  const panel = sr && sr.querySelector('.linkp');
+  if (!prev || prev.hidden || !panel || panel.hidden) return null;
+  return { ph: sr.querySelector('.lp-ph').hidden ? '' : sr.querySelector('.lp-ph').textContent, note: sr.querySelector('.lp-prev-note').textContent, frame: !!sr.querySelector('.lp-frame iframe'), src: (sr.querySelector('.lp-frame iframe') || {}).src || '' };
+});
+await t('link preview: same-site destination loads in a small live frame after a short dwell', async () => {
+  await hoverLink('#navlink');
+  let s = await previewState();
+  ok(!s || !s.frame, 'nothing requested immediately: ' + JSON.stringify(s)); // dwell first
+  await sleep(1300);
+  s = await previewState();
+  ok(s && s.frame && s.src.endsWith('/nav'), JSON.stringify(s));
+  const f = page.frames().find((x) => x.url().endsWith('/nav'));
+  ok(f, 'preview frame navigated');
+  eq(await f.title(), 'NAVIGATED');
+  eq(page.url(), `${base}/links.html`, 'main page untouched');
+});
+await t('link preview: moving away removes the frame', async () => {
+  await page.mouse.move(1100, 700, { steps: 2 }); await sleep(700);
+  eq(await previewState(), null);
+  ok(!page.frames().some((x) => x.url().endsWith('/nav') && x !== page.mainFrame()), 'frame removed');
+});
+await t('link preview: action-looking links (log out) are never requested', async () => {
+  await hoverLink('#logout');
+  await sleep(1400);
+  const s = await previewState();
+  ok(s && !s.frame && /action link/.test(s.note), JSON.stringify(s));
+  ok(!hits.includes('/account/logout'), 'server never saw /account/logout');
+});
+await t('link preview: mailto has no preview; external sites carry an embedding hint', async () => {
+  await hoverLink('#mail');
+  await sleep(1000);
+  const m = await previewState();
+  ok(m && !m.frame && /mailto/.test(m.note), JSON.stringify(m));
+  await hoverLink('#ext');
+  await sleep(1200);
+  const e = await previewState();
+  ok(e && /block embedding/.test(e.note), JSON.stringify(e));
+});
+// header rewriting happens at the network layer, which request interception (used by the stubbed pages above) bypasses:
+// continue the remaining link tests on a page without interception
+await page.close();
+page = await openPage(`${base}/links.html`, { stubExternal: false });
+await activate(page, 'element');
+const frameTitle = async (suffix) => { const f = page.frames().find((x) => x !== page.mainFrame() && x.url().endsWith(suffix)); return f ? f.title() : null; };
+const dnrRules = () => helper.evaluate(() => chrome.declarativeNetRequest.getDynamicRules().then((r) => r.length));
+await t('full previews: off by default → a site that forbids embedding stays blank and offers to enable full previews', async () => {
+  eq(await dnrRules(), 0, 'no header rule installed by default');
+  // make the link cross-origin (127.0.0.1 vs localhost) so it counts as an external site
+  await page.evaluate(() => { document.getElementById('blockedlink').href = location.origin.replace('localhost', '127.0.0.1') + '/blocked'; });
+  await hoverLink('#blockedlink');
+  await sleep(1600);
+  const s = await previewState();
+  ok(s && /block embedding/.test(s.note), JSON.stringify(s));
+  const btn = await ui(page, '.lp-enable');
+  ok(btn && !(await btn.evaluate((e) => e.hidden)), '"Enable full previews" shown');
+  ok((await frameTitle('/blocked')) !== 'BLOCKED-PAGE', 'blocked by X-Frame-Options as expected');
+});
+await t('full previews: "Enable full previews" opens the settings page at the right switch', async () => {
+  const btn = await ui(page, '.lp-enable');
+  const d = await lp();
+  await page.mouse.move(d.box.x + d.box.w / 2, d.box.y + 20, { steps: 6 }); await sleep(250);
+  const [tgt] = await Promise.all([
+    new Promise((res) => browser.once('targetcreated', res)),
+    (async () => { const bb = await btn.boundingBox(); await page.mouse.click(bb.x + bb.width / 2, bb.y + bb.height / 2); })(),
+  ]);
+  await sleep(600);
+  const opts = (await browser.pages()).find((p) => p.url().includes('options/options.html'));
+  ok(opts && opts.url().endsWith('#anysite'), 'options opened: ' + (opts && opts.url()));
+  ok(await opts.$('input[data-perm="all-sites"]'), 'switch present');
+  await opts.close();
+  void tgt;
+  await page.bringToFront();
+});
+await t('full previews: when enabled, the same site renders (headers relaxed only for the preview frame)', async () => {
+  await setSettings({ linkPreviewAnySite: true }); await sleep(500);
+  eq(await dnrRules(), 1, 'rule installed');
+  await hoverLink('#blockedlink');
+  await sleep(2200);
+  const s = await previewState();
+  ok(s && s.frame && /preview\/preview\.html/.test(s.src), JSON.stringify(s));
+  eq(await frameTitle('/blocked'), 'BLOCKED-PAGE');
+  const btn = await ui(page, '.lp-enable');
+  ok(btn && (await btn.evaluate((e) => e.hidden)), 'no enable button once on');
+});
+await t('full previews: ordinary frames on pages keep their protections (rule is limited to the preview page)', async () => {
+  const blocked = await page.evaluate(async (u) => new Promise((resolve) => {
+    const f = document.createElement('iframe');
+    f.onload = () => { let readable = true; try { readable = !!f.contentDocument && f.contentDocument.title === 'BLOCKED-PAGE'; } catch (_) { readable = false; } f.remove(); resolve(readable); };
+    f.src = u; document.body.appendChild(f);
+  }), `${base}/blocked`);
+  eq(blocked, false, 'a normal iframe to the X-Frame-Options page is still refused');
+});
+await t('full previews: the preview page refuses to load anything without the session token', async () => {
+  const p2 = await browser.newPage();
+  await p2.goto(`chrome-extension://${extId}/preview/preview.html?u=${encodeURIComponent(base + '/nav')}&t=not-the-token`);
+  await sleep(600);
+  eq(p2.frames().length, 1, 'no inner frame created');
+  await p2.close();
+  await page.bringToFront();
+});
+await t('full previews: turning it off removes the header rule again', async () => {
+  await setSettings({ linkPreviewAnySite: false }); await sleep(500);
+  eq(await dnrRules(), 0);
+});
+for (const vp of [{ width: 1280, height: 900 }, { width: 900, height: 560 }]) {
+  await t(`panel stays reachable and usable with the preview open (${vp.width}×${vp.height} window): pointer can travel in, copy works`, async () => {
+    await page.setViewport(vp);
+    await sleep(300);
+    await hoverLink('#navlink');
+    await sleep(1500); // preview expanded: the panel is now tall
+    const d0 = await lp();
+    ok(d0, 'panel visible');
+    ok(d0.box.x >= 0 && d0.box.y >= 0 && d0.box.x + d0.box.w <= vp.width && d0.box.y + d0.box.h <= vp.height + 1, 'inside viewport ' + JSON.stringify(d0.box));
+    // travel from the link to the middle of the panel in a few moves, at human speed
+    const lb = await (await page.$('#navlink')).boundingBox();
+    const from = { x: lb.x + lb.width / 2, y: lb.y + lb.height / 2 };
+    const to = { x: d0.box.x + d0.box.w / 2, y: d0.box.y + 40 };
+    for (let i = 1; i <= 10; i++) { await page.mouse.move(from.x + ((to.x - from.x) * i) / 10, from.y + ((to.y - from.y) * i) / 10); await sleep(35); }
+    await sleep(700); // longer than the old hide delay
+    ok(await lp(), 'panel still visible after moving onto it');
+    const btn = await ui(page, '[data-copy="url"]');
+    const bb = await btn.boundingBox();
+    await page.mouse.click(bb.x + bb.width / 2, bb.y + bb.height / 2); await sleep(300);
+    ok((await clip(page)).endsWith('/nav'), await clip(page));
+    // and it still goes away once the pointer leaves everything
+    await page.mouse.move(vp.width - 5, vp.height - 5, { steps: 4 }); await sleep(800);
+    eq(await lp(), null);
+    await page.setViewport({ width: 1280, height: 900 });
+  });
+}
+await t('link preview: "Open in new tab" opens the destination without touching this tab', async () => {
+  await hoverLink('#navlink');
+  await sleep(1300); // the preview block (with the button) appears after the dwell
+  const d = await lp();
+  const b = d.box;
+  await page.mouse.move(b.x + b.w / 2, b.y + 20, { steps: 8 }); await sleep(300);
+  const [popup] = await Promise.all([
+    new Promise((res) => browser.once('targetcreated', res)),
+    (async () => { const btn = await ui(page, '.lp-open'); const bb = await btn.boundingBox(); await page.mouse.click(bb.x + bb.width / 2, bb.y + bb.height / 2); })(),
+  ]);
+  ok(popup.url().includes('/nav') || popup.url() === '' || popup.type() === 'page', 'new tab created ' + popup.url());
+  eq(page.url(), `${base}/links.html`);
+  for (const pg of await browser.pages()) if (pg !== page && pg.url().includes('/nav')) await pg.close();
+  await page.bringToFront();
+});
 await t('clicking a link still copies and does not navigate (existing behaviour kept)', async () => {
+  await page.mouse.move(1100, 700, { steps: 2 }); await sleep(500); // the expanded preview of the last link can cover this one
   const c = await center(page, '#plain');
   await page.mouse.click(c.x, c.y); await sleep(300);
   eq(await clip(page), 'Plain link');

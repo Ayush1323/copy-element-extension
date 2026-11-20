@@ -35,6 +35,10 @@
         <label class="switch"><input type="checkbox" data-key="toolbarEnabled"><i></i></label></div>
       <div class="row"><div class="lbl"><b>Element type labels</b><span>Display H2 HEADING, PARAGRAPH, CARD … on highlights.</span></div>
         <label class="switch"><input type="checkbox" data-key="showLabels"><i></i></label></div>
+      <div class="row"><div class="lbl"><b>Link preview</b><span>Show a small live preview of where a hovered link goes. Loads the page after a short pause; sites that forbid embedding show a hint.</span></div>
+        <label class="switch"><input type="checkbox" data-key="linkPreview"><i></i></label></div>
+      <div class="row" id="row-anysite"><div class="lbl"><b>Preview sites that block embedding</b><span>Many sites (statista.com, GitHub, Google…) refuse to be shown in a preview frame. Turn this on to preview them anyway: LinkLens then relaxes frame-blocking headers <em>only</em> for the preview frame it creates, never for the pages you browse. Chrome will ask for access to all sites when you enable it; turn it off to give it back.</span></div>
+        <label class="switch"><input type="checkbox" data-key="linkPreviewAnySite" data-perm="all-sites"><i></i></label></div>
       <div class="row"><div class="lbl"><b>Toast notifications</b><span>Confirm each successful copy on the page.</span></div>
         <label class="switch"><input type="checkbox" data-key="toastEnabled"><i></i></label></div>
       <div class="row"><div class="lbl"><b>Highlight colour</b><span>Outline and accent colour used on pages.</span></div>
