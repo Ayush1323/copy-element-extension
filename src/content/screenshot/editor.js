@@ -2,7 +2,6 @@ import {
   TOOLS, newId, clone, drawAnnotation, pick, bounds, getHandles, handleAt, applyHandle, translate, snap45,
   nextNumber, textLayout, HANDLE_CURSOR, LINE_H,
 } from './annotations.js';
-import { flatten } from './export-service.js';
 
 const HISTORY_LIMIT = 120;
 const SHORTCUTS = { v: 'select', p: 'pencil', a: 'arrow', l: 'line', r: 'rect', o: 'ellipse', h: 'highlighter', t: 'text', n: 'number', b: 'blur', x: 'eraser' };
@@ -11,6 +10,8 @@ const CURSORS = { select: 'default', text: 'text', eraser: 'crosshair' };
 
 /**
  * Layered canvas editor: [base screenshot canvas] + [annotation canvas] + [UI overlay canvas].
+ * The base canvas keeps every captured pixel; the annotation layer is only as big as what is on screen (so a 40 000 px page
+ * costs no second full-size canvas) and export draws the annotations once more, straight onto a full-resolution copy.
  * Annotations live in image CSS pixels, so zooming/resizing never moves them; the screenshot itself is never modified.
  *
  * @param {{base: HTMLCanvasElement, cssW: number, cssH: number, prefs: object, onChange: Function}} o
@@ -22,15 +23,13 @@ export function createEditor({ base, cssW, cssH, prefs, onChange }) {
   base.className = 'ss-layer ss-base';
   const annot = document.createElement('canvas');
   annot.className = 'ss-layer ss-annot';
-  annot.width = base.width; annot.height = base.height;
   const over = document.createElement('canvas');
   over.className = 'ss-layer ss-over';
   over.tabIndex = -1;
   stage.append(base, annot, over);
   const actx = annot.getContext('2d');
   const octx = over.getContext('2d');
-  const sx = () => annot.width / cssW;
-  const sy = () => annot.height / cssH;
+  const MAX_LAYER = 8192; // canvas side limit for the on-screen annotation / overlay layers
 
   let tool = TOOLS.includes(prefs.tool) ? prefs.tool : 'arrow';
   const props = {
@@ -72,23 +71,24 @@ export function createEditor({ base, cssW, cssH, prefs, onChange }) {
     rafId = 0;
     if (destroyed) return;
     env.skipId = editing ? editing.id : null;
+    sizeLayers();
     actx.setTransform(1, 0, 0, 1, 0, 0);
     actx.clearRect(0, 0, annot.width, annot.height);
-    actx.setTransform(sx(), 0, 0, sy(), 0, 0);
+    actx.setTransform(annot.width / cssW, 0, 0, annot.height / cssH, 0, 0);
     for (const a of annotations) drawAnnotation(actx, a, env);
     if (draft) drawAnnotation(actx, draft, env);
     renderOverlay();
   }
   const schedule = () => { if (!rafId && !destroyed) rafId = requestAnimationFrame(render); };
 
-  function sizeOverlay() {
-    const k = zoom * dpr();
+  /** Annotation + UI layers match what is displayed (zoom x device pixel ratio), so they stay crisp at any zoom. */
+  function sizeLayers() {
+    const k = Math.min(zoom * dpr(), MAX_LAYER / Math.max(cssW, cssH));
     const w = Math.max(1, Math.round(cssW * k)), h = Math.max(1, Math.round(cssH * k));
-    if (over.width !== w || over.height !== h) { over.width = w; over.height = h; }
+    for (const c of [annot, over]) if (c.width !== w || c.height !== h) { c.width = w; c.height = h; }
   }
 
   function renderOverlay() {
-    sizeOverlay();
     const k = over.width / cssW;
     octx.setTransform(1, 0, 0, 1, 0, 0);
     octx.clearRect(0, 0, over.width, over.height);
@@ -411,16 +411,28 @@ export function createEditor({ base, cssW, cssH, prefs, onChange }) {
     },
     setZoom(z) {
       zoom = Math.min(Math.max(z, 0.05), 8);
-      stage.style.width = `${cssW * zoom}px`;
-      stage.style.height = `${cssH * zoom}px`;
+      // At 100% every canvas pixel lands on exactly one device pixel (crisp even at 125% / 150% display scaling)
+      const nw = base.width / dpr(), nh = base.height / dpr();
+      const natW = Math.abs(nw - cssW) <= 1.5 ? nw : cssW, natH = Math.abs(nh - cssH) <= 1.5 ? nh : cssH;
+      stage.style.width = `${natW * zoom}px`;
+      stage.style.height = `${natH * zoom}px`;
       placeTextarea(); emit(); schedule();
     },
     isEditingText: () => !!editing,
-    /** Flattened screenshot + annotations at the screenshot's native resolution. */
+    /** Screenshot + annotations at the screenshot's full native resolution (the untouched base itself when nothing was drawn). */
     exportCanvas() {
       commitText();
-      if (rafId) { cancelAnimationFrame(rafId); render(); }
-      return flatten(base, annot);
+      if (!annotations.length) return base;
+      const out = document.createElement('canvas');
+      out.width = base.width; out.height = base.height;
+      const c = out.getContext('2d');
+      c.drawImage(base, 0, 0);
+      c.setTransform(out.width / cssW, 0, 0, out.height / cssH, 0, 0);
+      const saved = env.skipId;
+      env.skipId = null;
+      for (const a of annotations) drawAnnotation(c, a, env);
+      env.skipId = saved;
+      return out;
     },
     /** Keyboard handling for the editor. Returns true when the key was consumed. */
     handleKey(e) {

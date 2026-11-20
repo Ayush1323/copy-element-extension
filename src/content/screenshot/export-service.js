@@ -12,21 +12,10 @@ export function sanitizeFilename(name, ext) {
   return `${base.slice(0, 120)}.${ext}`;
 }
 
-export function canvasToBlob(canvas, type = 'image/png', quality = 0.95) {
+export function canvasToBlob(canvas, type = 'image/png', quality = 1) {
   return new Promise((resolve, reject) => {
     canvas.toBlob((b) => (b ? resolve(b) : reject(new Error('Could not encode the image (it may be too large).'))), type, quality);
   });
-}
-
-/** Composite the screenshot and its annotation layer into one canvas at full resolution. */
-export function flatten(baseCanvas, annotCanvas, background = '#ffffff') {
-  const out = document.createElement('canvas');
-  out.width = baseCanvas.width; out.height = baseCanvas.height;
-  const ctx = out.getContext('2d');
-  ctx.fillStyle = background; ctx.fillRect(0, 0, out.width, out.height); // JPEG has no alpha
-  ctx.drawImage(baseCanvas, 0, 0);
-  ctx.drawImage(annotCanvas, 0, 0, out.width, out.height);
-  return out;
 }
 
 export async function copyImage(blob) {

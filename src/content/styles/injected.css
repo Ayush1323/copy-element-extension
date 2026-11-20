@@ -281,3 +281,4 @@ button { font: inherit; color: inherit; cursor: pointer; border: 0; background: 
 .ss-tools.two-col .ss-grip, .ss-tools.two-col .ss-hsep { grid-column: 1 / -1; }
 .ss-field .ss-seg { justify-self: start; }
 .ss-pop { width: 340px; }
+.ss-note { color: var(--muted); font-size: 11px; line-height: 1.35; }

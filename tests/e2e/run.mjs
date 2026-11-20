@@ -1059,6 +1059,107 @@ await t('22. restricted pages are refused with a clear message', async () => {
 await page.close();
 await helper.evaluate(async (snap) => { await chrome.storage.local.clear(); await chrome.storage.local.set(snap); }, shotSnapshot);
 
+console.log('\nTest Q — Screenshot quality: the exported image is the captured image, pixel for pixel');
+{
+  const qServerHits = [];
+  void qServerHits;
+  const qPage = await openPage(`${base}/quality.html`, { stubExternal: false });
+  const qsh = (sel) => ui(qPage, sel);
+  const qclick = async (selector) => { const b = await qsh(selector); const bb = await b.boundingBox(); await qPage.mouse.click(bb.x + bb.width / 2, bb.y + bb.height / 2); await sleep(200); };
+  const waitCopy = async () => { for (let k = 0; k < 60; k++) { await sleep(300); const dis = await qPage.evaluate(() => { const b = document.querySelector('linklens-root').shadowRoot.querySelector('.ss-actions [data-act="copy"]'); return b ? b.disabled : false; }); if (!dis) break; } };
+  /** Compare the image on the clipboard with a reference PNG (base64); optionally ignore a rectangle (e.g. an annotation). */
+  const diffClipboard = (b64, ignore) => qPage.evaluate(async (ref, skip) => {
+    const items = await navigator.clipboard.read();
+    const a = await createImageBitmap(await items.find((i) => i.types.includes('image/png')).getType('image/png'));
+    const rb = await createImageBitmap(await (await fetch('data:image/png;base64,' + ref)).blob());
+    if (a.width !== rb.width || a.height !== rb.height) return { mismatch: `${a.width}x${a.height} vs ${rb.width}x${rb.height}` };
+    const px = (bm) => { const c = document.createElement('canvas'); c.width = bm.width; c.height = bm.height; const x = c.getContext('2d'); x.drawImage(bm, 0, 0); return x.getImageData(0, 0, bm.width, bm.height).data; };
+    const A = px(a), B = px(rb);
+    let bad = 0, total = 0, maxd = 0;
+    for (let y = 0; y < a.height; y++) for (let x = 0; x < a.width; x++) {
+      if (skip && x >= skip.x && x < skip.x + skip.w && y >= skip.y && y < skip.y + skip.h) continue;
+      const i = (y * a.width + x) * 4; total++;
+      const d = Math.max(Math.abs(A[i] - B[i]), Math.abs(A[i + 1] - B[i + 1]), Math.abs(A[i + 2] - B[i + 2]));
+      if (d > 0) bad++; if (d > maxd) maxd = d;
+    }
+    return { w: a.width, h: a.height, differing: bad, total, maxChannelDiff: maxd };
+  }, b64, ignore || null);
+  const startShot = async (rect) => {
+    await activate(qPage, 'screenshot'); await sleep(900);
+    if (rect) { await qPage.mouse.move(rect.x, rect.y); await qPage.mouse.down(); await qPage.mouse.move(rect.x + rect.w, rect.y + rect.h, { steps: 6 }); await qPage.mouse.up(); await qPage.keyboard.press('Enter'); await sleep(500); }
+  };
+  const closeShot = async () => { await qPage.keyboard.press('Escape'); await sleep(500); };
+  const RECT = { x: 33, y: 41, w: 517, h: 233 }; // deliberately odd position and size
+
+  await t('Q1. selected area: the copied image equals the page pixel for pixel (hairlines, checkerboard, small text)', async () => {
+    await startShot(RECT);
+    await qclick('.ss-actions [data-act="copy"]'); await waitCopy();
+    await closeShot();
+    const ref = await qPage.screenshot({ clip: { x: RECT.x, y: RECT.y, width: RECT.w, height: RECT.h }, encoding: 'base64' });
+    const d = await diffClipboard(ref);
+    ok(!d.mismatch, 'same size as the page area: ' + JSON.stringify(d));
+    eq(d.differing, 0, 'not a single pixel differs: ' + JSON.stringify(d));
+  });
+  await t('Q2. annotated export: everything outside the annotation is still the untouched screenshot', async () => {
+    await startShot(RECT);
+    const sb = await (await qsh('.ss-over')).boundingBox();
+    await qPage.mouse.move(sb.x + 300, sb.y + 40); await qPage.mouse.down(); await qPage.mouse.move(sb.x + 460, sb.y + 120, { steps: 8 }); await qPage.mouse.up(); await sleep(150);
+    eq(Number(await (await qsh('.ss-stage')).evaluate((e) => e.dataset.count)), 1, 'an arrow was drawn');
+    await qclick('.ss-actions [data-act="copy"]'); await waitCopy();
+    await closeShot();
+    const ref = await qPage.screenshot({ clip: { x: RECT.x, y: RECT.y, width: RECT.w, height: RECT.h }, encoding: 'base64' });
+    const d = await diffClipboard(ref, { x: 290, y: 30, w: 190, h: 105 });
+    ok(!d.mismatch, JSON.stringify(d));
+    eq(d.differing, 0, 'screenshot untouched outside the arrow: ' + JSON.stringify(d));
+    const withArrow = await diffClipboard(ref);
+    ok(withArrow.differing > 50, 'and the arrow itself is in the export: ' + JSON.stringify(withArrow));
+  });
+  await t('Q3. full page: same size and same pixels as the page itself', async () => {
+    await startShot(null);
+    await qclick('.ss-pill [data-act="full"]');
+    for (let k = 0; k < 40 && !(await qsh('.ss-work')); k++) await sleep(500);
+    await sleep(500);
+    await qclick('.ss-actions [data-act="copy"]'); await waitCopy();
+    await closeShot();
+    const ref = await qPage.screenshot({ fullPage: true, encoding: 'base64' });
+    const d = await diffClipboard(ref);
+    ok(!d.mismatch, JSON.stringify(d));
+    eq(d.differing, 0, 'lossless: ' + JSON.stringify(d));
+  });
+  await qPage.close();
+
+  const tallPage = await openPage(`${base}/quality-tall.html`, { stubExternal: false });
+  await t('Q4. a 19 000 px tall page is captured at its FULL height with unblurred hairlines (no silent downscaling)', async () => {
+    await activate(tallPage, 'screenshot'); await sleep(900);
+    const pill = await ui(tallPage, '.ss-pill [data-act="full"]');
+    const pb = await pill.boundingBox();
+    await tallPage.mouse.click(pb.x + pb.width / 2, pb.y + pb.height / 2);
+    for (let k = 0; k < 120 && !(await ui(tallPage, '.ss-work')); k++) await sleep(500);
+    await sleep(800);
+    const toasts = await tallPage.evaluate(() => [...document.querySelector('linklens-root').shadowRoot.querySelectorAll('.toast')].map((t) => t.textContent).join('|'));
+    ok(!/reduced resolution/i.test(toasts), 'no downscaling notice: ' + toasts);
+    const cb = await (await ui(tallPage, '.ss-actions [data-act="copy"]')).boundingBox();
+    await tallPage.mouse.click(cb.x + cb.width / 2, cb.y + cb.height / 2);
+    for (let k = 0; k < 120; k++) { await sleep(400); const dis = await tallPage.evaluate(() => document.querySelector('linklens-root').shadowRoot.querySelector('.ss-actions [data-act="copy"]').disabled); if (!dis) break; }
+    const rows = [10, 10 + 37 * 100, 10 + 37 * 300, 10 + 37 * 500]; // black hairlines at x=100
+    const res = await tallPage.evaluate(async (ys) => {
+      const items = await navigator.clipboard.read();
+      const bmp = await createImageBitmap(await items.find((i) => i.types.includes('image/png')).getType('image/png'));
+      const c = document.createElement('canvas'); c.width = bmp.width; c.height = bmp.height; const x = c.getContext('2d'); x.drawImage(bmp, 0, 0);
+      const at = (px, py) => Array.from(x.getImageData(px, py, 1, 1).data).slice(0, 3);
+      return { w: bmp.width, h: bmp.height, lines: ys.map((y) => ({ y, on: at(100, y), above: at(100, y - 1), below: at(100, y + 1) })), scrollH: document.documentElement.scrollHeight };
+    }, rows);
+    eq(res.h, res.scrollH, `full ${res.scrollH}px height kept (got ${res.h})`);
+    eq(res.w, await tallPage.evaluate(() => innerWidth), 'full width kept');
+    for (const l of res.lines) {
+      ok(l.on.every((v) => v === 0), `hairline at y=${l.y} is pure black: ${l.on}`);
+      ok(l.above.every((v) => v === 255) && l.below.every((v) => v === 255), `and razor sharp (neighbours pure white): ${l.above} / ${l.below} at y=${l.y}`);
+    }
+    await tallPage.keyboard.press('Escape'); await sleep(500);
+  });
+  await tallPage.close();
+}
+
 console.log('\nSelected text mode');
 page = await openPage(`${base}/nested-links.html`);
 await t('selection shows a Copy button; clicking copies and keeps selection', async () => {

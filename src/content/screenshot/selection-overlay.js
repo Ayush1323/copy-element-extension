@@ -15,6 +15,7 @@ const CURSOR = { nw: 'nwse-resize', se: 'nwse-resize', ne: 'nesw-resize', sw: 'n
  */
 export function createSelection(ui, { frame, canFullPage, onConfirm, onVisible, onFullPage, onCancel }) {
   const { cssW, cssH } = frame;
+  const scale = frame.scaleX || 1; // device pixels per CSS pixel: what the exported image really contains
   const root = h('div', 'ss-sel', `
     <canvas class="ss-frozen"></canvas>
     <div class="ss-dim"></div>
@@ -65,7 +66,7 @@ export function createSelection(ui, { frame, canFullPage, onConfirm, onVisible, 
     dim.hidden = true; box.hidden = false; hint.hidden = true;
     box.style.transform = `translate(${rect.x}px, ${rect.y}px)`;
     box.style.width = `${rect.w}px`; box.style.height = `${rect.h}px`;
-    dims.textContent = `${Math.round(rect.w)} × ${Math.round(rect.h)}`;
+    dims.textContent = `${Math.round(rect.w)} × ${Math.round(rect.h)}` + (Math.abs(scale - 1) > 0.02 ? `  ·  ${Math.round(rect.w * scale)} × ${Math.round(rect.h * scale)} px` : '');
     dims.classList.toggle('in', rect.y < 30);
     const ok = rect.w >= MIN && rect.h >= MIN;
     pillConfirm.disabled = !ok;

@@ -114,7 +114,9 @@ export function createShotSession({ ui, toast, onExit }) {
     area = r;
     workspace = false;
     host = h('div', 'ss-inplace');
-    host.style.transform = `translate(${r.x}px, ${r.y}px)`;
+    const dpr = window.devicePixelRatio || 1;
+    const snap = (v) => Math.round(v * dpr) / dpr; // sit exactly on a device pixel: no resampling blur at 125% / 150% scaling
+    host.style.transform = `translate(${snap(r.x)}px, ${snap(r.y)}px)`;
     host.style.width = `${r.w}px`; host.style.height = `${r.h}px`;
     ui.layer.appendChild(host);
     frame.bitmap.close(); // the cropped canvas is all we need from here on
@@ -155,6 +157,7 @@ export function createShotSession({ ui, toast, onExit }) {
     scroll.appendChild(editor.el);
     fitZoom();
     relayout();
+    toast(`Captured ${res.canvas.width} × ${res.canvas.height} px. The preview is scaled to fit; the saved image is full size.`, 'success');
     res.notes.forEach((n) => toast(n, 'success'));
   }
 
@@ -184,17 +187,18 @@ export function createShotSession({ ui, toast, onExit }) {
   }
 
   const doCopy = () => withBusy('copy', async () => {
-    const blob = await canvasToBlob(editor.exportCanvas());
-    await copyImage(blob);
+    const canvas = editor.exportCanvas();
+    await copyImage(await canvasToBlob(canvas));
     bars.flash('copy');
-    toast('Screenshot copied to clipboard', 'success');
+    toast(`Screenshot copied · ${canvas.width} × ${canvas.height} px`, 'success');
   });
 
   const doDownload = () => withBusy('download', async () => {
     const name = defaultFilename('png');
-    downloadBlob(await canvasToBlob(editor.exportCanvas()), name);
+    const canvas = editor.exportCanvas();
+    downloadBlob(await canvasToBlob(canvas), name);
     bars.flash('download');
-    toast(`Downloaded ${name}`, 'success');
+    toast(`Downloaded ${name} · ${canvas.width} × ${canvas.height} px`, 'success');
   });
 
   function closePopover() { if (popover) { popover.remove(); popover = null; } }
@@ -206,7 +210,7 @@ export function createShotSession({ ui, toast, onExit }) {
     popover = h('div', 'ss-pop', `
       <div class="ss-pop-title">Save screenshot</div>
       <label class="ss-field"><span>File name</span><input type="text" class="ss-name" value="${stem}" spellcheck="false" maxlength="120" aria-label="File name"></label>
-      <div class="ss-field"><span>Format</span><div class="ss-seg"><button data-fmt="png" class="on">PNG</button><button data-fmt="jpeg">JPEG</button></div></div>
+      <div class="ss-field"><span>Format</span><div class="ss-seg"><button data-fmt="png" class="on">PNG</button><button data-fmt="jpeg">JPEG</button></div><small class="ss-note">PNG keeps every pixel exactly. JPEG is smaller but lossy.</small></div>
       <div class="ss-pop-actions">
         <button class="ss-btn wide" data-p="cancel">Cancel</button>
         ${typeof window.showSaveFilePicker === 'function' ? `<button class="ss-btn wide" data-p="saveas">${icon('save', 15)}<span>Choose location…</span></button>` : ''}
@@ -231,7 +235,7 @@ export function createShotSession({ ui, toast, onExit }) {
       const name = sanitizeFilename(input.value, ext);
       closePopover();
       await withBusy('save', async () => {
-        const blob = await canvasToBlob(editor.exportCanvas(), fmt === 'jpeg' ? 'image/jpeg' : 'image/png', 0.95);
+        const blob = await canvasToBlob(editor.exportCanvas(), fmt === 'jpeg' ? 'image/jpeg' : 'image/png', 1);
         if (b.dataset.p === 'saveas') {
           const res = await saveBlob(blob, name);
           if (res.cancelled) return;

@@ -1,0 +1,16 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>Quality tall</title>
+<style>
+  html,body{margin:0;background:#fff}
+  /* a very tall page: 1-px black hairlines every 37 px (starting at y=10); anything resampled would blur them */
+  #tall{position:relative;width:100%;height:19000px;background:#fff}
+  #tall i{position:absolute;left:20px;width:300px;height:1px;background:#000}
+  #tall b{position:absolute;left:340px;width:300px;height:1px;background:#d00}
+</style></head>
+<body><div id="tall"></div>
+<script>
+  const t = document.getElementById('tall');
+  for (let y = 10; y < 19000; y += 37) { const i = document.createElement('i'); i.style.top = y + 'px'; t.appendChild(i); }
+  for (let y = 12; y < 19000; y += 113) { const b = document.createElement('b'); b.style.top = y + 'px'; t.appendChild(b); }
+</script>
+</body></html>

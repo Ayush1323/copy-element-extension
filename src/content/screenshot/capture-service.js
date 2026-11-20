@@ -5,9 +5,9 @@ const frames = (n = 2) => new Promise((r) => { const step = () => (--n <= 0 ? r(
 
 // Chrome allows ~2 captureVisibleTab calls per second.
 const CAPTURE_GAP_MS = 560;
-// Stay well inside canvas limits (16 384 px per side, ~268 M pixels total in Chrome).
-const MAX_SIDE = 16000;
-const MAX_AREA = 120e6;
+// Stay inside Chrome's canvas limits (32 767 px per side, ~268 M pixels in total).
+const MAX_SIDE = 32000;
+const MAX_AREA = 200e6;
 
 async function requestCapture() {
   let lastError = 'Capture failed';
@@ -30,7 +30,8 @@ export function friendlyCaptureError(msg) {
 
 async function toBitmap(dataUrl) {
   const blob = await (await fetch(dataUrl)).blob();
-  return createImageBitmap(blob);
+  // 'none': keep the captured pixel values exactly as Chrome produced them (no colour-space conversion on wide-gamut screens)
+  try { return await createImageBitmap(blob, { colorSpaceConversion: 'none', premultiplyAlpha: 'none' }); } catch (_) { return createImageBitmap(blob); }
 }
 
 /**
@@ -123,10 +124,13 @@ export async function captureFullPage({ hide, show, onProgress, isCancelled }) {
         canvas = document.createElement('canvas');
         canvas.width = Math.round(cssW * outScale);
         canvas.height = Math.round(fullH * outScale);
-        ctx = canvas.getContext('2d');
+        ctx = canvas.getContext('2d', { alpha: false });
         ctx.imageSmoothingQuality = 'high';
       }
-      ctx.drawImage(bmp, 0, 0, bmp.width, bmp.height, 0, y * outScale, cssW * outScale, (bmp.height / scale) * outScale);
+      // whole device pixels only: a fractional offset would resample (blur) the strip
+      const dy = Math.round(y * outScale);
+      if (outScale === scale) ctx.drawImage(bmp, 0, dy); // 1:1, no scaling at all
+      else ctx.drawImage(bmp, 0, 0, bmp.width, bmp.height, 0, dy, canvas.width, Math.round((bmp.height / scale) * outScale));
       bmp.close();
     }
   } finally {
