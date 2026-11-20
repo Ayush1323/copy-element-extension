@@ -7,6 +7,7 @@ export const MODES = Object.freeze({
   CARD: 'card',
   SECTION: 'section',
   TEXT: 'text',
+  IMAGES: 'images',
 });
 
 export const FORMATS = Object.freeze({ PLAIN: 'plain', RICH: 'rich' });
@@ -37,4 +38,5 @@ export const MODE_META = Object.freeze({
   card: { label: 'Card Extractor', short: 'Card' },
   section: { label: 'Section Extractor', short: 'Section' },
   text: { label: 'Selected Text', short: 'Selection' },
+  images: { label: 'Inspect Images', short: 'Images' },
 });

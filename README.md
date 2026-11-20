@@ -20,6 +20,7 @@ Everything runs locally in the browser: no backend, no analytics, no external AP
 | **Selected Text** | A small *Copy* button appears next to any text selection. |
 | **Force Copy** | Clickable / stretched-link cards never navigate while a picker is active; page click handlers are suppressed; normal behaviour is restored on exit. |
 | **Link attribute preview** | In Element Picker, hovering any link (including nested elements, dynamic links and open Shadow DOM) shows its text, resolved `href`, `target`, every `rel` value, `title`, `download` and `aria-label` in a floating panel, with copy buttons for URL, rel and HTML. Missing attributes read *Not specified*. |
+| **Inspect Images** | Hover any `<img>` or CSS background image: it is outlined and a DevTools-style tooltip shows rendered size & aspect ratio, intrinsic size & ratio, file size and current source. `Alt+C` copies the image URL. The page stays fully clickable. |
 | **Floating toolbar** | Compact handle with the element type; hover it for *Copy Text · Copy Element · Copy Card · Copy Section · Preview*. Always clamped inside the viewport. |
 | **Preview panel** | Structured preview with character/block counts, per-part copy, *Copy All / Plain / Rich / Copy Again*. |
 | **Clipboard** | Plain text or sanitized Rich HTML (`text/html` + `text/plain` in one `ClipboardItem`), with `writeText` and `execCommand` fallbacks. |

@@ -14,6 +14,7 @@ import { elementMode } from '../modes/element-mode.js';
 import { cardMode } from '../modes/card-mode.js';
 import { sectionMode } from '../modes/section-mode.js';
 import { textMode } from '../modes/text-mode.js';
+import { imagesMode } from '../modes/images-mode.js';
 import { createShadowUI } from '../ui/shadow-root-ui.js';
 import { createHighlight } from '../ui/selection-highlight.js';
 import { createToolbar } from '../ui/floating-toolbar.js';
@@ -22,9 +23,11 @@ import { createIndicator } from '../ui/indicator.js';
 import { createSelectionButton } from '../ui/selection-button.js';
 import { createPreview } from '../ui/preview-panel.js';
 import { createLinkPanel } from '../ui/link-panel.js';
+import { createImageTip } from '../ui/image-inspector.js';
+import { imageTargetAt, clearImageCaches, startImageIndex, stopImageIndex } from './image-info.js';
 import { findLinkAt, readLinkInfo } from './link-info.js';
 
-const MODE_DEFS = { element: elementMode, card: cardMode, section: sectionMode, text: textMode };
+const MODE_DEFS = { element: elementMode, card: cardMode, section: sectionMode, text: textMode, images: imagesMode };
 const SWALLOWED = ['pointerdown', 'pointerup', 'mousedown', 'mouseup', 'dblclick', 'auxclick', 'touchstart', 'touchend'];
 const IS_TOP = (() => { try { return window.top === window; } catch (_) { return true; } })();
 
@@ -47,6 +50,7 @@ export function createPickerController() {
   let lastMutationUpdate = 0;
   let handleState = null; // { el, hovered } — the target the visible toolbar handle belongs to
   let handleTimer = 0;
+  let imageHover = null; // { el, kind, url } under the pointer in Inspect Images mode
   let linkEl = null; // anchor whose attribute panel is showing
   let unsubStorage = null;
   let listeners = [];
@@ -67,6 +71,7 @@ export function createPickerController() {
     parts = {
       highlight: createHighlight(ui),
       linkPanel: createLinkPanel(ui, { onCopy: copyLinkPart }), // before the toolbar so the toolbar menu stacks above it
+      imageTip: createImageTip(ui),
       toolbar: createToolbar(ui, { onAction: onToolbarAction }),
       toaster: createToaster(ui, () => settings.toastEnabled),
       selection: createSelectionButton(ui, { onCopy: copySelection }),
@@ -95,6 +100,13 @@ export function createPickerController() {
     on(document, 'selectionchange', scheduleSelection);
     on(window, 'scroll', rafThrottle(() => { updateSelectionButton(); }), { capture: true, passive: true });
     on(window, 'keydown', onKeyDown, true);
+
+    if (mode === MODES.IMAGES) {
+      on(window, 'pointermove', onImageMove, { capture: true, passive: true });
+      on(window, 'scroll', scheduleImage, { capture: true, passive: true });
+      on(window, 'resize', scheduleImage, { passive: true });
+      on(document, 'mouseleave', () => clearImage());
+    }
 
     if (hoverOn()) {
       on(window, 'pointermove', onMove, { capture: true, passive: true });
@@ -127,6 +139,9 @@ export function createPickerController() {
     handleTimer = 0;
     handleState = null;
     hideLinkNow();
+    imageHover = null;
+    stopImageIndex();
+    if (parts) { parts.imageTip.hide(); parts.highlight.hide(); }
     if (cursorStyle) cursorStyle.remove();
     cursorStyle = null;
   }
@@ -136,6 +151,7 @@ export function createPickerController() {
       parts.highlight.hide();
       parts.toolbar.hide();
       parts.linkPanel.hideNow();
+      parts.imageTip.hide();
       parts.preview.close();
       parts.selection.hide();
       if (parts.indicator) parts.indicator.hide();
@@ -164,6 +180,7 @@ export function createPickerController() {
         });
       }
       if (parts.indicator) parts.indicator.show(mode);
+      if (mode === MODES.IMAGES) { clearImageCaches(); startImageIndex(); }
     }
     if (broadcast) notify();
     return mode;
@@ -208,6 +225,43 @@ export function createPickerController() {
       hovered.raw = raw; // same target: keep the user's ArrowUp/Down level
     } else hovered = next;
     renderHover(true);
+  }
+
+  /* ---------------- image inspector (Inspect Images mode) ---------------- */
+
+  function clearImage() {
+    imageHover = null;
+    if (!parts) return;
+    parts.highlight.hide();
+    parts.imageTip.hide();
+  }
+
+  function renderImage() {
+    if (mode !== MODES.IMAGES || !parts) return;
+    const t = last.x >= 0 ? imageTargetAt(last.x, last.y) : null;
+    if (!t) { clearImage(); return; }
+    const r = rectOf(t.el);
+    if (r.width === 0 && r.height === 0) { clearImage(); return; }
+    imageHover = t;
+    parts.highlight.show(r, t.kind === 'bg' ? 'BACKGROUND IMAGE' : 'IMAGE', { showLabel: true });
+    parts.imageTip.show(t, r, last);
+  }
+
+  const scheduleImage = rafThrottle(() => renderImage());
+
+  function onImageMove(e) {
+    if (!parts) return;
+    if (ui.owns(e)) { clearImage(); return; }
+    last = { x: e.clientX, y: e.clientY };
+    scheduleImage();
+  }
+
+  async function copyImageUrl() {
+    if (!imageHover) return false;
+    const r = await writeClipboard({ text: imageHover.url });
+    toast(r.ok ? `Copied ${imageHover.kind === 'bg' ? 'background image' : 'image'} URL` : r.error, r.ok ? 'success' : 'error');
+    if (r.ok) lastCopyAt = Date.now();
+    return r.ok;
   }
 
   /* ---------------- link attribute panel (Element Picker only) ---------------- */
@@ -455,6 +509,7 @@ export function createPickerController() {
   async function copyHovered() {
     if (!mode) return false;
     if (Date.now() - lastCopyAt < 250) return true;
+    if (mode === MODES.IMAGES) return imageHover ? copyImageUrl() : false;
     if (mode === MODES.TEXT || !hovered) {
       const sel = window.getSelection();
       if (sel && !sel.isCollapsed) { await copySelection(); return true; }
@@ -497,7 +552,7 @@ export function createPickerController() {
       return;
     }
     if (e.altKey && !e.ctrlKey && !e.metaKey) {
-      if (e.code === 'KeyC' && hoverOn()) { e.preventDefault(); copyHovered(); return; }
+      if (e.code === 'KeyC' && (hoverOn() || mode === MODES.IMAGES)) { e.preventDefault(); copyHovered(); return; }
       if (e.code === 'KeyE') { e.preventDefault(); setMode(MODES.ELEMENT); return; }
       if (e.code === 'KeyS') { e.preventDefault(); setMode(MODES.SECTION); return; }
       if ((e.key === 'ArrowUp' || e.key === 'ArrowDown') && hoverOn() && hovered) {

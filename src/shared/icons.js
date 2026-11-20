@@ -15,6 +15,7 @@ const P = {
   x: '<path d="M6 6l12 12M18 6L6 18"/>',
   clock: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5.2l3.2 1.8"/>',
   globe: '<circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c3.2 3.2 3.2 14.8 0 18M12 3c-3.2 3.2-3.2 14.8 0 18"/>',
+  image: '<rect x="3" y="4" width="18" height="16" rx="3"/><circle cx="9" cy="10" r="1.8"/><path d="M21 16l-5-5-8 8"/>',
   eye: '<path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12z"/><circle cx="12" cy="12" r="3"/>',
   history: '<path d="M3.5 12a8.5 8.5 0 108.5-8.5A8.6 8.6 0 005.7 6.2L3.5 8.5"/><path d="M3.5 4v4.5H8M12 7.5V12l3 1.8"/>',
   up: '<path d="M12 19V5M6 11l6-6 6 6"/>',

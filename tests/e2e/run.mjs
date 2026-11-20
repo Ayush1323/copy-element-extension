@@ -306,6 +306,143 @@ await t('panel disappears when the picker mode ends', async () => {
 });
 await page.close();
 
+console.log('\nTest I — Inspect Images (hover highlight + info, <img> and CSS backgrounds)');
+await resetStorage();
+page = await openPage(`${base}/images.html`);
+const tip = async () => {
+  const h = await ui(page, '.imgtip');
+  if (!h) return null;
+  return h.evaluate((e) => e.hidden ? null : { chip: e.querySelector('.it-chip').textContent, rows: [...e.querySelectorAll('dt')].map((dt) => [dt.textContent, dt.nextElementSibling.textContent]), box: (() => { const b = e.getBoundingClientRect(); return { x: b.x, y: b.y, w: b.width, h: b.height }; })() });
+};
+const outlineVisible = async () => { const o = await ui(page, '.outline'); return !!o && !(await o.evaluate((e) => e.hidden)); };
+const chipText = async () => { const c = await ui(page, '.chip'); return c ? c.evaluate((e) => e.hidden ? null : e.textContent) : null; };
+const tv = (d, k) => (d.rows.find((r) => r[0] === k) || [])[1];
+const inView = (b) => b.x >= 0 && b.y >= 0 && b.x + b.w <= 1280 && b.y + b.h <= 900;
+await t('Inspect Images starts with no side list and nothing highlighted', async () => {
+  const r = await activate(page, 'images');
+  ok(r && r.ok, JSON.stringify(r));
+  ok(await hostExists(page), 'host mounted');
+  eq(await ui(page, '.imgp'), null, 'no image list panel');
+  eq(await tip(), null);
+  ok(!(await outlineVisible()), 'no outline yet');
+});
+await t('hovering an <img> highlights it (IMAGE) and shows DevTools-style info', async () => {
+  const c = await center(page, '#banner');
+  await page.mouse.move(c.x, c.y, { steps: 3 }); await sleep(450);
+  ok(await outlineVisible(), 'outline visible');
+  eq(await chipText(), 'IMAGE');
+  const d = await tip();
+  ok(d, 'tooltip visible');
+  eq(d.chip, 'IMAGE');
+  eq(tv(d, 'Rendered size'), '296 × 166 px');
+  eq(tv(d, 'Rendered aspect ratio'), '148:83');
+  eq(tv(d, 'Intrinsic size'), '767 × 278 px');
+  eq(tv(d, 'Intrinsic aspect ratio'), '767:278');
+  ok(/^\d+ B$/.test(tv(d, 'File size')), tv(d, 'File size'));
+  ok(tv(d, 'Current source').startsWith('data:image/svg+xml'), tv(d, 'Current source'));
+  ok(inView(d.box), 'tooltip inside viewport ' + JSON.stringify(d.box));
+});
+await t('moving to another image updates highlight and info immediately', async () => {
+  const c = await center(page, '#linked');
+  await page.mouse.move(c.x, c.y, { steps: 3 }); await sleep(450);
+  const d = await tip();
+  eq(tv(d, 'Rendered size'), '50 × 50 px');
+  eq(tv(d, 'Intrinsic aspect ratio'), '1:1');
+  eq(await chipText(), 'IMAGE');
+});
+await t('CSS background image is detected, even when text sits on top of it', async () => {
+  const c = await center(page, '#hero');
+  const b = await (await page.$('#hero')).boundingBox();
+  await page.mouse.move(b.x + b.width - 30, b.y + b.height - 20, { steps: 3 }); await sleep(600);
+  eq(await chipText(), 'BACKGROUND IMAGE');
+  const d = await tip();
+  ok(d, 'tooltip visible');
+  eq(d.chip, 'BACKGROUND IMAGE');
+  eq(tv(d, 'Rendered size'), '420 × 180 px');
+  eq(tv(d, 'Rendered aspect ratio'), '7:3');
+  eq(tv(d, 'Intrinsic size'), '840 × 360 px'); // probed asynchronously
+  eq(tv(d, 'Intrinsic aspect ratio'), '7:3');
+  ok(tv(d, 'Current source').startsWith('data:image/svg+xml'));
+  ok(inView(d.box), 'tooltip inside viewport');
+  void c;
+});
+await t('pointer-events:none image behind a stretched-link card is caught', async () => {
+  const c = await center(page, '#ghost');
+  await page.mouse.move(c.x, c.y, { steps: 3 }); await sleep(600);
+  eq(await chipText(), 'IMAGE');
+  const d = await tip();
+  ok(d, 'tooltip visible');
+  eq(tv(d, 'Rendered size'), '300 × 120 px');
+  eq(tv(d, 'Intrinsic size'), '600 × 240 px');
+});
+await t('::before background image on a non-interactive layer is caught', async () => {
+  const c = await center(page, '#pseudo');
+  await page.mouse.move(c.x, c.y, { steps: 3 }); await sleep(600);
+  eq(await chipText(), 'BACKGROUND IMAGE');
+  const d = await tip();
+  ok(d, 'tooltip visible');
+  eq(tv(d, 'Intrinsic size'), '520 × 180 px');
+});
+await t('clipped-away and fully transparent images are ignored', async () => {
+  const b = await (await page.$('#clip')).boundingBox();
+  await page.mouse.move(b.x + b.width + 60, b.y + 20, { steps: 3 }); await sleep(450); // inside the image box, outside the overflow clip
+  eq(await tip(), null);
+  const c = await center(page, '#invisible');
+  await page.mouse.move(c.x, c.y, { steps: 3 }); await sleep(450);
+  eq(await tip(), null);
+});
+await t('gradient-only backgrounds and plain text are not treated as images', async () => {
+  const c = await center(page, '#grad');
+  await page.mouse.move(c.x, c.y, { steps: 3 }); await sleep(450);
+  eq(await tip(), null);
+  ok(!(await outlineVisible()), 'no outline on gradient');
+  const p = await center(page, '#plain');
+  await page.mouse.move(p.x, p.y, { steps: 3 }); await sleep(450);
+  eq(await tip(), null);
+});
+await t('shadow DOM image is detected on hover', async () => {
+  const c = await page.evaluate(() => { const i = document.getElementById('host').shadowRoot.getElementById('sh'); i.scrollIntoView({ block: 'center' }); const r = i.getBoundingClientRect(); return { x: r.x + r.width / 2, y: r.y + r.height / 2 }; });
+  await sleep(250);
+  await page.mouse.move(c.x, c.y, { steps: 3 }); await sleep(500);
+  const d = await tip();
+  ok(d && tv(d, 'Intrinsic size') === '240 × 120 px', JSON.stringify(d));
+  ok(await outlineVisible());
+});
+await t('highlight follows the image while scrolling with a still pointer', async () => {
+  await page.evaluate(() => window.scrollTo(0, 0)); await sleep(200);
+  const c = await center(page, '#banner');
+  await page.mouse.move(c.x, c.y, { steps: 2 }); await sleep(350);
+  await page.evaluate(() => window.scrollBy(0, 60)); await sleep(450);
+  const o = await ui(page, '.outline');
+  const ob = await o.boundingBox();
+  const ib = await (await page.$('#banner')).boundingBox();
+  ok(Math.abs(ob.y - ib.y) < 8 && Math.abs(ob.x - ib.x) < 8, `outline ${JSON.stringify(ob)} vs image ${JSON.stringify(ib)}`);
+});
+await t('Alt+C copies the hovered image URL; page links are never hijacked', async () => {
+  const c = await center(page, '#linked');
+  await page.mouse.move(c.x, c.y, { steps: 3 }); await sleep(450);
+  await page.keyboard.down('Alt'); await page.keyboard.press('KeyC'); await page.keyboard.up('Alt'); await sleep(350);
+  ok((await clip(page)).startsWith('data:image/svg+xml'), await clip(page));
+  eq(page.url(), `${base}/images.html`);
+});
+await t('clicking an image link still navigates (the page is fully usable in this mode)', async () => {
+  const c = await center(page, '#linked');
+  await Promise.all([page.waitForNavigation({ timeout: 5000 }), page.mouse.click(c.x, c.y)]);
+  ok(page.url().includes('/nav'), page.url());
+});
+await page.close();
+
+page = await openPage(`${base}/images.html`);
+await t('Escape exits Inspect Images and removes all overlays', async () => {
+  await activate(page, 'images');
+  const c = await center(page, '#banner');
+  await page.mouse.move(c.x, c.y, { steps: 3 }); await sleep(400);
+  ok(await tip());
+  await page.keyboard.press('Escape'); await sleep(300);
+  ok(!(await hostExists(page)), 'host removed');
+});
+await page.close();
+
 console.log('\nTest B/C — card & section modes, rich format, preview, history, settings');
 await resetStorage();
 page = await openPage(`${base}/complex-section.html`);
@@ -405,7 +542,7 @@ console.log('\nPopup & options UI');
 await t('popup renders actions, status, activity and has no console errors', async () => {
   await helper.goto(`chrome-extension://${extId}/popup/popup.html`);
   await helper.waitForSelector('.action');
-  eq((await helper.$$('.action')).length, 4);
+  eq((await helper.$$('.action')).length, 5);
   ok(await helper.$eval('.welcome h1', (e) => e.textContent.includes('Hover. Discover. Copy.')));
   ok((await helper.$$('#activity li')).length >= 1, 'activity lists recent copies');
   await helper.screenshot({ path: join(tmp, 'popup.png') });
