@@ -62,7 +62,8 @@ function renderFormat() {
   const cur = state.settings.defaultFormat;
   root.innerHTML = [
     ['plain', 'Plain Text', 'file'],
-    ['rich', 'Rich Text (HTML)', 'bolt'],
+    ['rich', 'Rich Text', 'bolt'],
+    ['markdown', 'Markdown', 'link'],
   ].map(([v, label, ic]) => `<button role="radio" aria-checked="${cur === v}" class="${cur === v ? 'on' : ''}" data-v="${v}">${icon(ic, 15)}${label}</button>`).join('');
   root.querySelectorAll('button').forEach((b) => b.addEventListener('click', async () => {
     state.settings = await saveSettings({ defaultFormat: b.dataset.v });

@@ -10,10 +10,10 @@ export const MODES = Object.freeze({
   IMAGES: 'images',
 });
 
-export const FORMATS = Object.freeze({ PLAIN: 'plain', RICH: 'rich' });
+export const FORMATS = Object.freeze({ PLAIN: 'plain', RICH: 'rich', MARKDOWN: 'markdown' });
 
 export const DEFAULT_SETTINGS = Object.freeze({
-  defaultFormat: FORMATS.PLAIN, // 'plain' | 'rich'
+  defaultFormat: FORMATS.PLAIN, // 'plain' | 'rich' | 'markdown' (links as [text](url))
   historyEnabled: true,
   toolbarEnabled: true,
   highlightColor: '#2563EB',

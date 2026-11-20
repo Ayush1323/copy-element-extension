@@ -451,8 +451,8 @@ export function createPickerController() {
     if (!payload) return false;
     const res = await commitCopy(payload, format, settings);
     if (res.ok) {
-      const how = format === 'rich' && !res.rich ? ' as plain text' : res.rich ? ' (rich)' : '';
-      toast(`Copied ${payload.type.toLowerCase()}${how}`, 'success', `${payload.chars.toLocaleString('en-US')} chars`);
+      const how = format === 'markdown' && !res.markdown ? ' as plain text' : res.markdown ? ' as Markdown' : format === 'rich' && !res.rich ? ' as plain text' : res.rich ? ' (rich)' : '';
+      toast(`Copied ${payload.type.toLowerCase()}${how}`, 'success', `${res.chars.toLocaleString('en-US')} chars`);
       if (parts && parts.preview.isOpen()) parts.preview.markCopied();
       lastCopyAt = Date.now();
     } else toast(res.error || 'Copy failed', 'error');
@@ -477,7 +477,8 @@ export function createPickerController() {
       parts.preview.open(payload, kind === 'text' ? 'TEXT' : kind === 'element' ? describeElement(el, 'element') : kind.toUpperCase());
       return;
     }
-    const ok = await copyPayload(payload, kind === 'text' ? 'plain' : settings.defaultFormat);
+    // 'Copy Text' is exact plain text, unless Markdown is chosen: then links are kept as [text](url)
+    const ok = await copyPayload(payload, kind === 'text' && settings.defaultFormat !== 'markdown' ? 'plain' : settings.defaultFormat);
     if (ok && parts) parts.toolbar.flash(kind);
   }
 
@@ -501,7 +502,7 @@ export function createPickerController() {
     const res = await commitCopy(payload, settings.defaultFormat, settings);
     if (res.ok) {
       parts.selection.flashOk();
-      toast('Copied selection', 'success', `${payload.chars.toLocaleString('en-US')} chars`);
+      toast(res.markdown ? 'Copied selection as Markdown' : 'Copied selection', 'success', `${res.chars.toLocaleString('en-US')} chars`);
     } else toast(res.error || 'Copy failed', 'error');
   }
 

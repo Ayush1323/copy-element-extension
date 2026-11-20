@@ -514,6 +514,68 @@ await t('mode switcher + toggle-off from the shortcut/popup path', async () => {
 });
 await page.close();
 
+console.log('\nTest M — Markdown links format');
+// keep the settings/history the later popup + selection tests rely on
+const storageSnapshot = await helper.evaluate(() => chrome.storage.local.get(null));
+page = await openPage(`${base}/markdown.html`);
+await t('Plain format drops links (baseline), Markdown format keeps them as [text](url)', async () => {
+  await setSettings({ defaultFormat: 'plain' });
+  await activate(page, 'element');
+  let c = await hover(page, '#para strong');
+  await page.mouse.click(c.x, c.y); await sleep(350);
+  eq(await clip(page), 'Out of the trends AI played in digital transformation, it reached one million users in 5 days and counting. Plain tail.');
+  await setSettings({ defaultFormat: 'markdown' }); await sleep(250);
+  c = await hover(page, '#para strong');
+  await page.mouse.click(c.x, c.y); await sleep(350);
+  const md = await clip(page);
+  ok(md.startsWith('Out of the trends AI played in [digital transformation](https://example.com/digital-transformation), it reached [one million users]('), md);
+  ok(/\[one million users\]\(http:\/\/localhost:\d+\/stats\?q=a%20b%281%29\) in \*\*5 days\*\* and \*counting\*\. Plain tail\.$/.test(md), md);
+  eq(page.url(), `${base}/markdown.html`, 'no navigation');
+});
+await t('Copy Text and headings also keep links in Markdown format', async () => {
+  await page.mouse.move(1100, 700, { steps: 2 }); await sleep(450); // let the previous toolbar handle go away
+  const tb = await (await page.$('#title')).boundingBox();
+  await page.mouse.move(tb.x + 25, tb.y + tb.height / 2, { steps: 3 }); await sleep(450); // on "Generative", not on the link
+  await page.mouse.click(tb.x + 25, tb.y + tb.height / 2); await sleep(350);
+  ok(/^#{1,6} Generative AI in \[app development\]\(http:\/\/localhost:\d+\/blog\/ai-apps\)$/.test(await clip(page)), await clip(page));
+});
+await t('hovering a link itself copies it as [text](url) (and nothing navigates)', async () => {
+  await page.mouse.move(1100, 700, { steps: 2 }); await sleep(450);
+  const c = await hover(page, '#para a');
+  await page.mouse.click(c.x, c.y); await sleep(350);
+  eq(await clip(page), '[digital transformation](https://example.com/digital-transformation)');
+  const t2 = await hover(page, '#title a');
+  await page.mouse.click(t2.x, t2.y); await sleep(350);
+  ok(/^\[app development\]\(http:\/\/localhost:\d+\/blog\/ai-apps\)$/.test(await clip(page)), await clip(page));
+  eq(page.url(), `${base}/markdown.html`, 'no navigation');
+});
+await t('Card Extractor copies the whole card as Markdown with every link and list', async () => {
+  await activate(page, 'card');
+  const c = await hover(page, '#card h3');
+  await page.mouse.click(c.x, c.y); await sleep(400);
+  const md = await clip(page);
+  ok(/^#{1,6} Related reading/m.test(md), md);
+  ok(/Learn about \[RAG pipelines\]\(http:\/\/localhost:\d+\/docs\/rag\) today\./.test(md), md);
+  ok(/^- See the \[full guide\]\(https:\/\/example\.com\/guide\)$/m.test(md), md);
+  ok(/^- No link here$/m.test(md), md);
+});
+await t('history stores the Markdown text and format', async () => {
+  const h = await helper.evaluate(async () => (await chrome.storage.local.get('mi_history')).mi_history || []);
+  ok(h.length && h[0].format === 'markdown' && /\]\(http/.test(h[0].text), JSON.stringify(h[0]).slice(0, 200));
+});
+await t('selected text is copied as Markdown too', async () => {
+  await activate(page, 'text');
+  await page.evaluate(() => { const p = document.querySelector('#para'); const r = document.createRange(); r.selectNodeContents(p); const s = getSelection(); s.removeAllRanges(); s.addRange(r); });
+  await sleep(500);
+  const btn = await ui(page, '.selbtn');
+  const b = await btn.boundingBox();
+  await page.mouse.click(b.x + b.width / 2, b.y + b.height / 2); await sleep(300);
+  ok(/\[digital transformation\]\(https:\/\/example\.com\/digital-transformation\)/.test(await clip(page)), await clip(page));
+  await page.keyboard.press('Escape'); await sleep(150);
+});
+await page.close();
+await helper.evaluate(async (snap) => { await chrome.storage.local.clear(); await chrome.storage.local.set(snap); }, storageSnapshot);
+
 console.log('\nSelected text mode');
 page = await openPage(`${base}/nested-links.html`);
 await t('selection shows a Copy button; clicking copies and keeps selection', async () => {
@@ -551,6 +613,9 @@ await t('popup format selector persists to settings', async () => {
   await helper.click('#format [data-v="rich"]'); await sleep(200);
   const s = await helper.evaluate(async () => (await chrome.storage.local.get('mi_settings')).mi_settings);
   eq(s.defaultFormat, 'rich');
+  eq((await helper.$$('#format button')).length, 3, 'three format options');
+  await helper.click('#format [data-v="markdown"]'); await sleep(200);
+  eq((await helper.evaluate(async () => (await chrome.storage.local.get('mi_settings')).mi_settings)).defaultFormat, 'markdown');
   await helper.click('#format [data-v="plain"]');
 });
 await t('popup recent item can be copied again and deleted', async () => {

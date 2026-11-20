@@ -59,7 +59,7 @@ kbd { font: 600 10px/1 ui-monospace, SFMono-Regular, Menlo, monospace; padding: 
 .link:hover { text-decoration: underline; }
 .link[hidden] { display: none; }
 
-.segmented { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; padding: 4px; background: #EEF2F7; border-radius: 11px; }
+.segmented { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; padding: 4px; background: #EEF2F7; border-radius: 11px; }
 .segmented button { display: flex; align-items: center; justify-content: center; gap: 6px; height: 32px; border-radius: 8px; color: #475569; font-weight: 600; font-size: 12px; transition: background .15s, color .15s, box-shadow .15s; }
 .segmented button:hover { color: var(--navy); }
 .segmented button.on { background: #fff; color: var(--blue); box-shadow: 0 1px 3px rgba(11,30,63,.14); }

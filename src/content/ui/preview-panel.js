@@ -43,6 +43,7 @@ export function createPreview(ui, { onCopyAll, onCopyPart, onClose }) {
       <button class="btn primary" data-f="default">${icon('copy', 14)}<span>Copy All</span></button>
       <button class="btn" data-f="plain">Plain Text</button>
       <button class="btn" data-f="rich">Rich Text</button>
+      <button class="btn" data-f="markdown" title="Links as [text](url)">Markdown</button>
     </div>`);
   el.hidden = true;
   ui.layer.appendChild(el);
