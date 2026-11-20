@@ -16,7 +16,8 @@ const ACTIONS = [
   { id: MODES.CARD, title: 'Card Extractor', desc: 'Grab a whole card', iconName: 'card', hint: '' },
   { id: MODES.SECTION, title: 'Section Extractor', desc: 'Copy a full section', iconName: 'section', hint: 'Alt+S' },
   { id: MODES.TEXT, title: 'Selected Text', desc: 'Copy highlighted text', iconName: 'text', hint: '' },
-  { id: MODES.IMAGES, title: 'Inspect Images', desc: 'Hover images & backgrounds for size, ratio & source', iconName: 'image', hint: '' },
+  { id: MODES.SCREENSHOT, title: 'Screenshot', desc: 'Capture & annotate on the page', iconName: 'camera', hint: 'Alt+Shift+S' },
+  { id: MODES.IMAGES, title: 'Inspect Images', desc: 'Size, ratio & source of any image', iconName: 'image', hint: '' },
 ];
 
 function toast(msg, ok = true) {
@@ -75,7 +76,7 @@ function renderStatus() {
   const active = !!state.mode;
   const domain = state.tab && !state.restricted ? domainOf(state.tab.url) : state.restricted ? 'Restricted page' : '—';
   const last = state.last;
-  const modeName = { element: 'Element Picker', card: 'Card Extractor', section: 'Section Extractor', text: 'Selected Text', images: 'Inspect Images' }[state.mode];
+  const modeName = { element: 'Element Picker', card: 'Card Extractor', section: 'Section Extractor', text: 'Selected Text', images: 'Inspect Images', screenshot: 'Screenshot' }[state.mode];
   $('#status').innerHTML = `
     <div class="cell"><span class="k">${icon('pointer', 13)}Picker</span><span class="v"><i class="dot ${active ? 'on' : ''}"></i>${active ? escapeHtml(modeName) : 'Inactive'}</span></div>
     <div class="cell"><span class="k">${icon('globe', 13)}Website</span><span class="v" title="${escapeHtml(domain)}">${escapeHtml(domain || '—')}</span></div>
@@ -119,6 +120,7 @@ function openSheet(kind) {
        <ul class="rows">
         <li><span>Activate Element Picker</span>${kb('Alt + E')}</li>
         <li><span>Activate Section Extractor</span>${kb('Alt + S')}</li>
+        <li><span>Capture a screenshot</span>${kb('Alt + Shift + S')}</li>
         <li><span>Copy hovered element</span>${kb('Alt + C')}</li>
         <li><span>Select parent / child</span>${kb('Alt + ↑ / ↓')}</li>
         <li><span>Exit current mode</span>${kb('Esc')}</li>

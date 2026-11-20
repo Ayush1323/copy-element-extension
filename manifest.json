@@ -55,6 +55,13 @@
         "mac": "Alt+S"
       },
       "description": "Activate Section Extractor"
+    },
+    "capture-screenshot": {
+      "suggested_key": {
+        "default": "Alt+Shift+S",
+        "mac": "Alt+Shift+S"
+      },
+      "description": "Capture a screenshot of this page"
     }
   },
   "content_security_policy": {

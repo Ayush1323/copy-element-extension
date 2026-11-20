@@ -48,6 +48,11 @@ export function isRestrictedUrl(url) {
     /^https?:\/\/(chrome\.google\.com\/webstore|chromewebstore\.google\.com)/i.test(url);
 }
 
+/** False in a content script whose extension was reloaded / updated while the page stayed open. */
+export function extensionAlive() {
+  try { return typeof chrome !== 'undefined' && !!chrome.runtime && !!chrome.runtime.id; } catch (_) { return false; }
+}
+
 export function rafThrottle(fn) {
   let scheduled = false;
   let lastArgs;

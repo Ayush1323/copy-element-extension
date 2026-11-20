@@ -5,6 +5,11 @@ import { logger } from '../utils/logger.js';
 (function bootstrap() {
   const KEY = '__linkLens';
   if (window[KEY]) return; // already injected in this frame
+  // Leftovers of an earlier, now orphaned copy of this extension (it was reloaded or updated while the page stayed open):
+  // its overlay would be dead UI and its crosshair-cursor style would stick to the page. Remove them.
+  try {
+    document.querySelectorAll('linklens-root, style[data-linklens]').forEach((n) => n.remove());
+  } catch (_) { /* detached document */ }
   const controller = createPickerController();
   Object.defineProperty(window, KEY, { value: controller, enumerable: false });
   const isTop = window.top === window;

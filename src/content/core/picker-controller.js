@@ -1,7 +1,7 @@
 import { MODES, DEFAULT_SETTINGS } from '../../shared/constants.js';
 import { MSG } from '../../shared/message-types.js';
 import { getSettings, onStorageChange } from '../../shared/storage.js';
-import { rafThrottle, truncate } from '../../shared/helpers.js';
+import { rafThrottle, truncate, extensionAlive } from '../../shared/helpers.js';
 import { logger } from '../../utils/logger.js';
 import { errorMessage } from '../../utils/error-handler.js';
 import { isEditable, hasLayout, rectOf, tagOf, resetCaches } from './dom-utils.js';
@@ -15,6 +15,8 @@ import { cardMode } from '../modes/card-mode.js';
 import { sectionMode } from '../modes/section-mode.js';
 import { textMode } from '../modes/text-mode.js';
 import { imagesMode } from '../modes/images-mode.js';
+import { screenshotMode } from '../modes/screenshot-mode.js';
+import { createShotSession } from '../screenshot/shot-session.js';
 import { createShadowUI } from '../ui/shadow-root-ui.js';
 import { createHighlight } from '../ui/selection-highlight.js';
 import { createToolbar } from '../ui/floating-toolbar.js';
@@ -27,7 +29,7 @@ import { createImageTip } from '../ui/image-inspector.js';
 import { imageTargetAt, clearImageCaches, startImageIndex, stopImageIndex } from './image-info.js';
 import { findLinkAt, readLinkInfo } from './link-info.js';
 
-const MODE_DEFS = { element: elementMode, card: cardMode, section: sectionMode, text: textMode, images: imagesMode };
+const MODE_DEFS = { element: elementMode, card: cardMode, section: sectionMode, text: textMode, images: imagesMode, screenshot: screenshotMode };
 const SWALLOWED = ['pointerdown', 'pointerup', 'mousedown', 'mouseup', 'dblclick', 'auxclick', 'touchstart', 'touchend'];
 const IS_TOP = (() => { try { return window.top === window; } catch (_) { return true; } })();
 
@@ -50,6 +52,7 @@ export function createPickerController() {
   let lastMutationUpdate = 0;
   let handleState = null; // { el, hovered } — the target the visible toolbar handle belongs to
   let handleTimer = 0;
+  let shot = null; // screenshot session (Screenshot mode only)
   let imageHover = null; // { el, kind, url } under the pointer in Inspect Images mode
   let linkEl = null; // anchor whose attribute panel is showing
   let unsubStorage = null;
@@ -140,6 +143,7 @@ export function createPickerController() {
     handleState = null;
     hideLinkNow();
     imageHover = null;
+    if (shot) { shot.destroy(); shot = null; }
     stopImageIndex();
     if (parts) { parts.imageTip.hide(); parts.highlight.hide(); }
     if (cursorStyle) cursorStyle.remove();
@@ -160,8 +164,21 @@ export function createPickerController() {
     ui = parts = null;
   }
 
+  /** The extension was reloaded while this page stayed open: this script is orphaned. Say so instead of throwing. */
+  function showReloadNotice() {
+    try {
+      const u = createShadowUI();
+      u.mount();
+      const t = createToaster(u, () => true);
+      t.show('LinkLens was updated: reload this page to use it again.', { type: 'error', force: true });
+      setTimeout(() => u.unmount(), 5000);
+    } catch (_) { /* nothing more we can do */ }
+  }
+
   async function setMode(next, { broadcast = true } = {}) {
     if (next === mode) return mode;
+    if (next && !extensionAlive()) { showReloadNotice(); return mode; }
+    if (next === MODES.SCREENSHOT && !IS_TOP) return mode; // the capture UI lives in the top frame only
     if (mode) { detach(); hovered = null; }
     mode = next;
     if (!mode) {
@@ -179,7 +196,8 @@ export function createPickerController() {
           if (ui) { ui.setAccent(settings.highlightColor); renderHover(); }
         });
       }
-      if (parts.indicator) parts.indicator.show(mode);
+      if (parts.indicator) { if (mode === MODES.SCREENSHOT) parts.indicator.hide(); else parts.indicator.show(mode); }
+      if (mode === MODES.SCREENSHOT) startShot();
       if (mode === MODES.IMAGES) { clearImageCaches(); startImageIndex(); }
     }
     if (broadcast) notify();
@@ -225,6 +243,18 @@ export function createPickerController() {
       hovered.raw = raw; // same target: keep the user's ArrowUp/Down level
     } else hovered = next;
     renderHover(true);
+  }
+
+  /* ---------------- screenshot (capture, select, edit: all on this page) ---------------- */
+
+  function startShot() {
+    if (shot) return;
+    shot = createShotSession({
+      ui,
+      toast: (msg, type = 'success') => { if (parts) parts.toaster.show(msg, { type, force: true }); },
+      onExit: () => setMode(null),
+    });
+    shot.start();
   }
 
   /* ---------------- image inspector (Inspect Images mode) ---------------- */
@@ -560,6 +590,7 @@ export function createPickerController() {
 
   function updateSelectionButton() {
     if (!parts || !mode) return;
+    if (mode === MODES.SCREENSHOT) { parts.selection.hide(); return; }
     const sel = window.getSelection();
     if (mouseDown || !sel || sel.isCollapsed || !sel.toString().trim() || sel.rangeCount === 0) { parts.selection.hide(); return; }
     const anchor = sel.anchorNode && (sel.anchorNode.nodeType === 1 ? sel.anchorNode : sel.anchorNode.parentElement);
@@ -576,6 +607,7 @@ export function createPickerController() {
 
   function onKeyDown(e) {
     if (!mode) return;
+    if (mode === MODES.SCREENSHOT && shot && shot.onKeyDown(e)) return;
     if (e.key === 'Escape') {
       if (parts.preview.isOpen()) { parts.preview.close(); e.preventDefault(); e.stopImmediatePropagation(); return; }
       e.preventDefault();

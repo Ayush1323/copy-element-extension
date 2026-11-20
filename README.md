@@ -21,6 +21,7 @@ Everything runs locally in the browser: no backend, no analytics, no external AP
 | **Force Copy** | Clickable / stretched-link cards never navigate while a picker is active; page click handlers are suppressed; normal behaviour is restored on exit. |
 | **Link attribute preview** | In Element Picker, hovering any link (including nested elements, dynamic links and open Shadow DOM) shows its text, resolved `href`, `target`, every `rel` value, `title`, `download` and `aria-label` in a floating panel, with copy buttons for URL, rel and HTML. Missing attributes read *Not specified*. After the pointer rests on a link for a moment, a small live preview of the destination page appears in the panel (toggle in Settings → *Link preview*); click it or *Open in new tab* to open the link. Sites that forbid embedding (X-Frame-Options) show an *Enable full previews* hint; turning on *Settings → Preview sites that block embedding* (optional all-sites permission, asked at that moment) renders them anyway by relaxing frame-blocking headers only for LinkLens's own preview frame. Links that look like actions (log out, delete…) are never loaded. |
 | **Inspect Images** | Hover any `<img>` or CSS background image: it is outlined and a DevTools-style tooltip shows rendered size & aspect ratio, intrinsic size & ratio, file size and current source. `Alt+C` copies the image URL. The page stays fully clickable. |
+| **Screenshot** | Capture → select → edit → copy / download, **all on the page you are looking at** (no new tab, window or editor page). Select an area (move / resize it), or take the visible screen or a stitched full page; annotate with pencil, arrow, line, rectangle, ellipse, highlighter, text, numbered steps, blur / pixelate and eraser; select, move, resize and delete annotations; undo / redo; copy to the clipboard, download a PNG or save as PNG / JPEG. Shortcut `Alt+Shift+S`. |
 | **Floating toolbar** | Compact handle with the element type; hover it for *Copy Text · Copy Element · Copy Card · Copy Section · Preview*. Always clamped inside the viewport. |
 | **Preview panel** | Structured preview with character/block counts, per-part copy, *Copy All / Plain / Rich / Copy Again*. |
 | **Clipboard** | Plain text or sanitized Rich HTML (`text/html` + `text/plain` in one `ClipboardItem`), with `writeText` and `execCommand` fallbacks. |
@@ -114,14 +115,43 @@ the MutationObserver, ResizeObserver, rAF loop and the temporary cursor `<style>
 **Performance:** hover detection is rAF-throttled; one `getBoundingClientRect` per frame keeps the outline aligned
 while hovering; style/layout lookups are memoised per detection pass; overlays are created once and reused.
 
+## Screenshot
+
+Open it from the popup (**Screenshot**) or press `Alt+Shift+S` (rebind at `chrome://extensions/shortcuts`).
+
+1. **Capture** – the tab is captured losslessly (`chrome.tabs.captureVisibleTab`) and shown, dimmed, exactly where the page is.
+2. **Select** – drag an area; resize with the 8 handles, move by dragging inside; the size is shown live. Or use the bar at the top:
+   *Selected area* (or press `Enter` / double-click), *Visible screen*, *Full page*, *Cancel* (`Esc`).
+3. **Edit** – the cropped screenshot becomes an editor right where you selected, with a floating tool column, an options bar
+   (colour, thickness, text size / background, blur mode) and an action bar. All three can be dragged by their grip.
+4. **Finish** – *Copy* (`Ctrl/⌘+C`), *Download* (PNG with a date/time name, `Ctrl/⌘+D`), *Save* (choose the name and PNG / JPEG,
+   optionally the folder; `Ctrl/⌘+S`) or *Close* (`Esc`). The page underneath is left exactly as it was.
+
+| Tool | Key | | Tool | Key |
+|---|---|---|---|---|
+| Select / move / resize | `V` | | Text | `T` |
+| Pencil | `P` | | Numbered step | `N` |
+| Arrow · Line | `A` · `L` | | Blur / pixelate | `B` |
+| Rectangle · Ellipse | `R` · `O` | | Eraser | `X` |
+| Highlighter | `H` | | Undo · Redo | `Ctrl/⌘+Z` · `Ctrl/⌘+Y` |
+
+`Shift` while drawing gives straight / 45° lines and squares / circles; `Delete` removes the selected annotation; double-click a text
+annotation to edit it. Annotations are stored in image coordinates, so they stay put when the full-page view is zoomed, and the
+original screenshot is never modified (blur / pixelate sample the untouched screenshot).
+
+**Full page** scrolls the page top to bottom (about 2 captures per second — a Chrome limit), hides fixed / sticky elements after the
+first screen so they are not repeated, stitches the result and restores the scroll position and every inline style it touched.
+It is only offered when the page itself scrolls; pages that scroll inside an inner container are captured as the visible screen and
+labelled as such. Very tall pages (> 16 000 px at device resolution) are saved at reduced resolution and you are told so.
+
 ## Permissions
 
 | Permission | Why |
 |---|---|
-| `activeTab` | Temporary access to the current tab only after you click the icon or use a shortcut. No host permissions are requested. |
+| `activeTab` | Temporary access to the current tab only after you click the icon or use a shortcut — also what allows the screenshot capture. No host permissions are requested. |
 | `scripting` | Inject the content script into that tab (all accessible frames). |
 | `storage` | Settings and local copy history. |
-| `clipboardWrite` | Copy when the browser has no fresh user gesture (e.g. `Alt+C`). |
+| `clipboardWrite` | Copy when the browser has no fresh user gesture (e.g. `Alt+C`), and copy screenshots as images. |
 
 ## Privacy
 
@@ -144,7 +174,9 @@ It needs Chrome (`CHROME_PATH` to override `/usr/bin/google-chrome`) and Node �
 
 ## Limitations
 
-- Chrome blocks extensions on `chrome://`, the Chrome Web Store and some other browser pages; the popup says so.
+- Chrome blocks extensions (and screenshots) on `chrome://`, the Chrome Web Store and some other browser pages; the popup says so.
+- Screenshots capture what the tab is showing: cross-origin iframes and video are included as rendered, but content that is not painted (e.g. `<select>` popups, native context menus) is not.
+- Full-page capture cannot see inside inner scroll containers; `position: sticky/fixed` elements appear only in the first screen.
 - Cross-origin iframes are only reachable when `activeTab` covers them; closed Shadow DOM content is invisible to any extension.
 - Sites that handle clicks in a `window` capture listener registered *before* the picker started can still see that click.
   Navigation itself (`preventDefault`) is still blocked.

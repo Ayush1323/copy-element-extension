@@ -116,6 +116,14 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     previewToken().then((token) => sendResponse({ ok: !!msg.token && msg.token === token }), () => sendResponse({ ok: false }));
     return true;
   }
+  if (msg.type === MSG.CAPTURE && sender.tab) {
+    // lossless capture of the sender's tab (needs activeTab: granted by the toolbar click / shortcut that started the session)
+    chrome.tabs.captureVisibleTab(sender.tab.windowId, { format: 'png' }).then(
+      (dataUrl) => sendResponse({ ok: true, dataUrl }),
+      (e) => sendResponse({ ok: false, error: String((e && e.message) || e) }),
+    );
+    return true;
+  }
   if (msg.type === MSG.OPEN_OPTIONS) {
     chrome.tabs.create({ url: chrome.runtime.getURL('options/options.html#anysite') });
     return false;
@@ -135,6 +143,7 @@ chrome.commands.onCommand.addListener(async (command) => {
   if (!tab || tab.id == null) return;
   if (command === 'activate-element-picker') await activate(tab.id, MODES.ELEMENT);
   else if (command === 'activate-section-picker') await activate(tab.id, MODES.SECTION);
+  else if (command === 'capture-screenshot') await activate(tab.id, MODES.SCREENSHOT);
   else if (command === 'copy-hovered') {
     try { await chrome.tabs.sendMessage(tab.id, { type: MSG.COPY_HOVERED }); } catch (_) { /* picker not active */ }
   }

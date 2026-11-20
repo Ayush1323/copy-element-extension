@@ -1,0 +1,22 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>Screenshot page</title>
+<style>
+  html,body{margin:0;font:16px/1.5 system-ui,sans-serif;color:#111}
+  header{position:fixed;top:0;left:0;right:0;height:56px;background:#172554;color:#fff;display:flex;align-items:center;padding:0 24px;font-weight:700;z-index:10}
+  main{padding:80px 40px 40px}
+  .row{display:flex;gap:24px;margin-bottom:24px}
+  .card{flex:1;height:160px;border-radius:14px;display:grid;place-items:center;color:#fff;font-size:22px;font-weight:700}
+  #red{background:#dc2626}#green{background:#16a34a}#blue{background:#2563eb}
+  #secret{background:#fef3c7;border:2px dashed #f59e0b;padding:16px;font:600 22px/1.4 ui-monospace,monospace;letter-spacing:2px}
+  .tall{height:1400px;background:linear-gradient(#fff,#e0e7ff 40%,#fce7f3);border-radius:14px;display:grid;place-items:end center;padding-bottom:30px;font-weight:700}
+  #marker{position:absolute;left:0;top:0;width:100%;height:0}
+</style></head>
+<body>
+<header>Fixed header</header>
+<main>
+  <div class="row"><div class="card" id="red">RED</div><div class="card" id="green">GREEN</div><div class="card" id="blue">BLUE</div></div>
+  <p id="secret">Card 4111 1111 1111 1111</p>
+  <button id="page-btn" onclick="document.title='CLICKED'">Page button</button>
+  <div class="tall" id="tall">END OF PAGE</div>
+</main>
+</body></html>

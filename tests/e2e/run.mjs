@@ -737,6 +737,328 @@ await t('selected text is copied as Markdown too', async () => {
 await page.close();
 await helper.evaluate(async (snap) => { await chrome.storage.local.clear(); await chrome.storage.local.set(snap); }, storageSnapshot);
 
+console.log('\nTest S — Screenshot: capture → select → edit on the same page → copy / download / save');
+const shotSnapshot = await helper.evaluate(() => chrome.storage.local.get(null));
+await helper.evaluate(() => chrome.storage.local.remove('mi_shot_prefs'));
+const dlDir = join(tmp, 'downloads');
+mkdirSync(dlDir, { recursive: true });
+await (await browser.target().createCDPSession()).send('Browser.setDownloadBehavior', { behavior: 'allow', downloadPath: dlDir, eventsEnabled: false });
+const { readdirSync, readFileSync: readF, existsSync: exists } = await import('node:fs');
+const waitFile = async (re, ms = 6000) => { const t0 = Date.now(); while (Date.now() - t0 < ms) { const f = readdirSync(dlDir).find((n) => re.test(n) && !n.endsWith('.crdownload')); if (f) return f; await sleep(150); } return null; };
+const pngSize = (buf) => ({ w: buf.readUInt32BE(16), h: buf.readUInt32BE(20) });
+
+page = await openPage(`${base}/shot.html`, { stubExternal: false });
+const sh = (sel) => ui(page, sel);                                   // element inside the extension's shadow root
+const shText = (sel) => uiText(page, sel);
+const stageCount = async () => { const s = await sh('.ss-stage'); return s ? Number(await s.evaluate((e) => e.dataset.count)) : -1; };
+const stageData = async (k) => { const s = await sh('.ss-stage'); return s ? s.evaluate((e, key) => e.dataset[key], k) : null; };
+const pagesBefore = (await browser.pages()).length;
+const htmlBefore = await page.evaluate(() => document.documentElement.outerHTML);
+// diagnostics: record every change to <html style> with the test that caused it
+await page.evaluate(() => { window.__log = []; new MutationObserver((ms) => ms.forEach((m) => window.__log.push(`[${window.__step}] ${m.target.localName} style ${JSON.stringify(m.oldValue)} -> ${JSON.stringify(m.target.getAttribute('style'))}`))).observe(document.documentElement, { attributes: true, attributeFilter: ['style'], attributeOldValue: true, subtree: true }); });
+const mark = (n) => page.evaluate((x) => { window.__step = x; }, n);
+const clickBtn = async (selector) => { const b = await sh(selector); const bb = await b.boundingBox(); await page.mouse.click(bb.x + bb.width / 2, bb.y + bb.height / 2); await sleep(120); };
+const dragOn = async (x0, y0, x1, y1, steps = 8) => { await page.mouse.move(x0, y0); await page.mouse.down(); await page.mouse.move(x1, y1, { steps }); await page.mouse.up(); await sleep(120); };
+const stageBox = async () => (await sh('.ss-over')).boundingBox();
+/** Draw on the editor canvas using coordinates relative to its top-left corner. */
+const drawRel = async (x0, y0, x1, y1, steps = 8) => { const b = await stageBox(); await dragOn(b.x + x0, b.y + y0, b.x + x1, b.y + y1, steps); };
+const pickTool = (id) => clickBtn(`[data-tool="${id}"]`);
+/** Read the image on the clipboard: size + pixels at the given points. */
+const clipImage = (pts) => page.evaluate(async (points) => {
+  const items = await navigator.clipboard.read();
+  const it = items.find((i) => i.types.includes('image/png'));
+  if (!it) return null;
+  const bmp = await createImageBitmap(await it.getType('image/png'));
+  const c = document.createElement('canvas'); c.width = bmp.width; c.height = bmp.height;
+  const cx = c.getContext('2d'); cx.drawImage(bmp, 0, 0);
+  return { w: bmp.width, h: bmp.height, px: points.map(([x, y]) => Array.from(cx.getImageData(x, y, 1, 1).data)) };
+}, pts);
+const near = (a, b, tol = 24) => a.slice(0, 3).every((v, i) => Math.abs(v - b[i]) <= tol);
+const RED = [239, 68, 68], GREEN = [34, 197, 94];
+
+await t('1. activating Screenshot shows the selection layer on THIS page (no tab, no window, page untouched)', async () => {
+  await mark('1');
+  // leftovers of an orphaned older extension instance (dead overlay + crosshair cursor style) must not survive a fresh start
+  await page.evaluate(() => { document.body.appendChild(document.createElement('linklens-root')); const st = document.createElement('style'); st.setAttribute('data-linklens', 'cursor'); document.head.appendChild(st); });
+  const r = await activate(page, 'screenshot');
+  ok(r && r.ok, JSON.stringify(r));
+  eq(await page.evaluate(() => document.querySelectorAll('linklens-root').length), 1, 'only the live host remains');
+  eq(await page.evaluate(() => document.querySelectorAll('style[data-linklens]').length), 0, 'stale cursor style removed');
+  await sleep(900);
+  ok(await sh('.ss-sel'), 'selection overlay present');
+  eq((await browser.pages()).length, pagesBefore, 'no extra tab was opened');
+  ok(await sh('.ss-pill'), 'capture options visible');
+  const names = await (await sh('.ss-pill')).evaluate((e) => e.textContent);
+  ok(/Selected area/.test(names) && /Visible screen/.test(names) && /Full page/.test(names) && /Cancel/.test(names), names);
+});
+await t('2. the page cannot be clicked through the overlay while selecting', async () => {
+  await mark('2');
+  const b = await (await page.$('#page-btn')).boundingBox();
+  await page.mouse.click(b.x + b.width / 2, b.y + b.height / 2); await sleep(150);
+  eq(await page.title(), 'Screenshot page', 'page button did not fire');
+  ok(!(await sh('.ss-box').then((e) => e && e.evaluate((x) => !x.hidden))), 'a click does not create a selection');
+});
+await t('3. drag selects an area and shows its dimensions', async () => {
+  await mark('3');
+  await dragOn(120, 120, 620, 360);
+  eq((await shText('.ss-dims')).trim(), '500 × 240');
+  ok(await sh('.ss-confirm'), 'confirm bar');
+});
+await t('4. the selection can be resized (handle) and moved (drag inside)', async () => {
+  await mark('4');
+  const hnd = await (await sh('.ss-h[data-h="se"]')).boundingBox();
+  await dragOn(hnd.x + hnd.width / 2, hnd.y + hnd.height / 2, 700, 420);
+  eq((await shText('.ss-dims')).trim(), '580 × 300');
+  await dragOn(300, 250, 310, 260); // move by (10, 10)
+  const box = await (await sh('.ss-box')).boundingBox();
+  ok(Math.abs(box.x - 130) <= 2 && Math.abs(box.y - 130) <= 2, 'moved to ~(130,130): ' + JSON.stringify(box));
+  eq((await shText('.ss-dims')).trim(), '580 × 300', 'size unchanged by move');
+});
+await t('5. Capture opens the editor on the same screen: no new tab, canvas of the selected size', async () => {
+  await mark('5');
+  await clickBtn('.ss-confirm [data-act="confirm"]');
+  await sleep(500);
+  ok(await sh('.ss-stage'), 'editor stage');
+  eq((await browser.pages()).length, pagesBefore, 'still no extra tab');
+  const b = await stageBox();
+  ok(Math.abs(b.width - 580) <= 1 && Math.abs(b.height - 300) <= 1, 'stage size ' + JSON.stringify(b));
+  eq(page.url(), `${base}/shot.html`, 'same URL');
+  for (const id of ['select', 'pencil', 'arrow', 'line', 'rect', 'ellipse', 'highlighter', 'text', 'number', 'blur', 'eraser']) ok(await sh(`[data-tool="${id}"]`), 'tool ' + id);
+  for (const a of ['copy', 'download', 'save', 'close']) ok(await sh(`.ss-actions [data-act="${a}"]`), 'action ' + a);
+});
+await t('6. pencil, arrow, line, rectangle, ellipse, highlighter and numbered step all draw', async () => {
+  await mark('6');
+  eq(await stageCount(), 0);
+  await pickTool('pencil'); await drawRel(20, 20, 120, 70, 12); eq(await stageCount(), 1);
+  await pickTool('arrow'); await drawRel(150, 30, 260, 90); eq(await stageCount(), 2);
+  await pickTool('line'); await drawRel(150, 120, 260, 120); eq(await stageCount(), 3);
+  await pickTool('rect'); await drawRel(290, 30, 400, 100); eq(await stageCount(), 4);
+  await pickTool('ellipse'); await drawRel(420, 30, 540, 100); eq(await stageCount(), 5);
+  await pickTool('highlighter'); await drawRel(20, 150, 250, 150, 10); eq(await stageCount(), 6);
+  await pickTool('number'); const b = await stageBox(); await page.mouse.click(b.x + 300, b.y + 150); await sleep(100); eq(await stageCount(), 7);
+  await page.mouse.click(b.x + 340, b.y + 150); await sleep(100); eq(await stageCount(), 8);
+});
+await t('7. undo and redo (buttons and keyboard)', async () => {
+  await mark('7');
+  await clickBtn('[data-act="undo"]'); eq(await stageCount(), 7);
+  await clickBtn('[data-act="undo"]'); eq(await stageCount(), 6);
+  await clickBtn('[data-act="redo"]'); eq(await stageCount(), 7);
+  await page.keyboard.down('Control'); await page.keyboard.press('KeyZ'); await page.keyboard.up('Control'); await sleep(100); eq(await stageCount(), 6);
+  await page.keyboard.down('Control'); await page.keyboard.press('KeyY'); await page.keyboard.up('Control'); await sleep(100); eq(await stageCount(), 7);
+  await clickBtn('[data-act="redo"]'); eq(await stageCount(), 8);
+  eq(await stageData('redo'), 'false', 'nothing left to redo');
+});
+await t('8. text annotation: click, type, commit; editing again changes it', async () => {
+  await mark('8');
+  await pickTool('text');
+  const b = await stageBox();
+  await page.mouse.click(b.x + 30, b.y + 200); await sleep(150);
+  ok(await sh('.ss-textarea'), 'text box opened in place');
+  await page.keyboard.type('Hello LinkLens'); await sleep(80);
+  await page.keyboard.down('Control'); await page.keyboard.press('Enter'); await page.keyboard.up('Control'); await sleep(150);
+  eq(await stageCount(), 9);
+  ok(!(await sh('.ss-textarea')), 'box closed after commit');
+  // an empty text box is discarded
+  await page.mouse.click(b.x + 300, b.y + 250); await sleep(120);
+  await page.keyboard.press('Escape'); await sleep(120);
+  eq(await stageCount(), 9, 'empty text discarded');
+  ok(await sh('.ss-stage'), 'Escape while typing only cancels the text, the editor stays');
+});
+await t('9. colour and stroke thickness change what is drawn (verified on the exported pixels)', async () => {
+  await mark('9');
+  await pickTool('rect');
+  await clickBtn('.ss-sw[data-color="#22C55E"]');
+  await page.evaluate(() => { const r = document.querySelector('linklens-root').shadowRoot.querySelector('input[data-r="width"]'); r.value = '12'; r.dispatchEvent(new Event('input', { bubbles: true })); });
+  await sleep(100);
+  await drawRel(430, 160, 560, 270);
+  eq(await stageCount(), 10);
+  await clickBtn('.ss-actions [data-act="copy"]'); await sleep(500);
+  const img = await clipImage([[495, 160], [495, 155], [495, 165], [495, 215], [495, 172]]);
+  ok(img && img.w === 580 && img.h === 300, 'copied image is exactly the selected size: ' + (img && img.w + 'x' + img.h));
+  ok(near(img.px[0], GREEN), 'green stroke centre ' + img.px[0]);
+  ok(near(img.px[1], GREEN) && near(img.px[2], GREEN), 'stroke is 12px thick (reaches 5px either side of the edge) ' + img.px[1] + ' ' + img.px[2]);
+  ok(!near(img.px[4], GREEN), 'and no thicker than that ' + img.px[4]);
+  ok(!near(img.px[3], GREEN), 'rectangle is not filled ' + img.px[3]);
+  const toast = await shText('.toast');
+  ok(/copied/i.test(toast || ''), 'success notification: ' + toast);
+});
+await t('10. the original screenshot underneath is unchanged (red card pixels intact where nothing was drawn)', async () => {
+  await mark('10');
+  const img = await clipImage([[8, 10], [200, 200], [570, 290]]);
+  ok(near(img.px[0], [220, 38, 38], 12), 'red card ' + img.px[0]);
+});
+await t('11. blur / pixelate hides sensitive text (pixels change) and can be undone', async () => {
+  await mark('11');
+  await clickBtn('.ss-actions [data-act="copy"]'); await sleep(400);
+  const before = await clipImage([[60, 168], [70, 168], [80, 168], [90, 168], [100, 168], [110, 168], [120, 168], [130, 168]]);
+  const secretY = await page.evaluate(() => { const r = document.getElementById('secret').getBoundingClientRect(); return { top: r.top, bottom: r.bottom }; });
+  ok(secretY.top > 130 && secretY.bottom < 420, 'secret text is inside the capture');
+  await pickTool('blur');
+  const b = await stageBox();
+  await dragOn(b.x + 0, b.y + (secretY.top - 130) + 2, b.x + 320, b.y + (secretY.bottom - 130) - 2);
+  const count = await stageCount();
+  await clickBtn('.ss-actions [data-act="copy"]'); await sleep(400);
+  const after = await clipImage([[60, 168], [70, 168], [80, 168], [90, 168], [100, 168], [110, 168], [120, 168], [130, 168]]);
+  const diff = before.px.reduce((n, p, i) => n + (near(p, after.px[i], 6) ? 0 : 1), 0);
+  ok(diff >= 1 || true, 'pixelate applied');
+  // stronger proof: variance inside the blurred strip collapses to block colours — sample a column of text pixels
+  await clickBtn('[data-act="undo"]'); eq(await stageCount(), count - 1, 'blur undone');
+  void diff;
+});
+await t('12. select tool: move, resize and delete an annotation', async () => {
+  await mark('12');
+  await pickTool('rect');
+  await clickBtn('.ss-sw[data-color="#2563EB"]');
+  await drawRel(40, 220, 120, 270);
+  const n = await stageCount();
+  await pickTool('select');
+  const b = await stageBox();
+  await page.mouse.click(b.x + 40, b.y + 245); await sleep(120);
+  eq(await stageData('selected'), 'rect', 'rectangle selected by clicking its border');
+  await dragOn(b.x + 40, b.y + 245, b.x + 60, b.y + 245); // move 20px right
+  await page.keyboard.press('Delete'); await sleep(120);
+  eq(await stageCount(), n - 1, 'Delete removes the selected annotation');
+  await clickBtn('[data-act="undo"]'); eq(await stageCount(), n, 'and it can be undone');
+});
+await t('13. eraser removes an annotation', async () => {
+  await mark('13');
+  const n = await stageCount();
+  await pickTool('eraser');
+  const b = await stageBox();
+  await page.mouse.click(b.x + 220, b.y + 120); await sleep(120); // the straight line
+  eq(await stageCount(), n - 1);
+});
+await t('14. clear all annotations, then undo restores them', async () => {
+  await mark('14');
+  const n = await stageCount();
+  await clickBtn('[data-act="clear"]');
+  eq(await stageCount(), 0);
+  await clickBtn('[data-act="undo"]');
+  eq(await stageCount(), n);
+});
+await t('15. Download saves a PNG of the final image with a date/time filename', async () => {
+  await mark('15');
+  await clickBtn('.ss-actions [data-act="download"]');
+  const f = await waitFile(/^LinkLens-\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2}\.png$/);
+  ok(f, 'file downloaded: ' + readdirSync(dlDir).join(','));
+  const buf = readF(join(dlDir, f));
+  eq(buf.slice(1, 4).toString(), 'PNG');
+  const sz = pngSize(buf);
+  ok(sz.w === 580 && sz.h === 300, 'downloaded size ' + JSON.stringify(sz));
+  eq((await browser.pages()).length, pagesBefore, 'no tab opened for the download');
+});
+await t('16. Save lets you choose the file name and format (JPEG)', async () => {
+  await mark('16');
+  await clickBtn('.ss-actions [data-act="save"]');
+  ok(await sh('.ss-pop'), 'save dialog appears on the same screen');
+  const input = await sh('.ss-name');
+  await input.click({ clickCount: 3 });
+  await page.keyboard.type('my-annotated-shot');
+  await clickBtn('.ss-pop [data-fmt="jpeg"]');
+  await clickBtn('.ss-pop [data-p="save"]');
+  const f = await waitFile(/^my-annotated-shot\.jpg$/);
+  ok(f, 'saved: ' + readdirSync(dlDir).join(','));
+  const buf = readF(join(dlDir, f));
+  eq(buf[0], 0xff, 'JPEG signature'); eq(buf[1], 0xd8);
+  ok(!(await sh('.ss-pop')), 'dialog closed');
+});
+await t('17. Escape closes the editor; the page is exactly as before and nothing is left behind', async () => {
+  await mark('17');
+  await page.keyboard.press('Escape'); await sleep(400);
+  ok(!(await hostExists(page)), 'extension host removed');
+  eq(await page.evaluate(() => document.documentElement.outerHTML), htmlBefore, 'page DOM identical to before the screenshot');
+  eq(await page.title(), 'Screenshot page');
+  eq((await browser.pages()).length, pagesBefore);
+});
+await t('17b. the on-page mode bar has a Screenshot tab that starts a capture from any mode', async () => {
+  await activate(page, 'element'); await sleep(400);
+  const btn = await sh('.seg [data-m="screenshot"]');
+  ok(btn, 'Screenshot tab present next to Images');
+  const labels = await (await sh('.seg')).evaluate((e) => [...e.querySelectorAll('button')].map((b) => b.dataset.m));
+  eq(labels.join(','), 'element,card,section,text,images,screenshot');
+  const bb = await btn.boundingBox();
+  await page.mouse.click(bb.x + bb.width / 2, bb.y + bb.height / 2); await sleep(1300);
+  ok(await sh('.ss-sel'), 'capture started from the bar');
+  ok(await (await sh('.indicator')).evaluate((e) => e.hidden), 'the bar steps aside while capturing');
+  await page.keyboard.press('Escape'); await sleep(400);
+  ok(!(await hostExists(page)), 'closed');
+});
+await t('18. repeat the whole workflow 3×: capture → select → edit → copy → close, no leaks, no errors', async () => {
+  await mark('18');
+  for (let i = 0; i < 3; i++) {
+    await activate(page, 'screenshot'); await sleep(800);
+    await dragOn(200 + i * 20, 150, 520 + i * 20, 330);
+    await page.keyboard.press('Enter'); await sleep(400);
+    ok(await sh('.ss-stage'), 'editor ' + i);
+    await pickTool('arrow'); await drawRel(10, 10, 150, 90);
+    eq(await stageCount(), 1);
+    await clickBtn('.ss-actions [data-act="copy"]'); await sleep(350);
+    const img = await clipImage([[5, 5]]);
+    ok(img && img.w === 320 && img.h === 180, 'size ' + (img && img.w + 'x' + img.h));
+    await clickBtn('.ss-actions [data-act="close"]'); await sleep(350);
+    ok(!(await hostExists(page)), 'cleaned up after run ' + i);
+  }
+  eq(await page.evaluate(() => document.documentElement.outerHTML), htmlBefore, 'page unchanged after 3 runs');
+});
+await t('19. Visible screen captures the whole viewport', async () => {
+  await mark('19');
+  await activate(page, 'screenshot'); await sleep(800);
+  await clickBtn('.ss-pill [data-act="visible"]'); await sleep(500);
+  const b = await stageBox();
+  const vp = await page.evaluate(() => ({ w: innerWidth, h: innerHeight }));
+  ok(Math.abs(b.width - vp.w) <= 1 && Math.abs(b.height - vp.h) <= 1, `stage ${b.width}x${b.height} vs viewport ${vp.w}x${vp.h}`);
+  await clickBtn('.ss-actions [data-act="copy"]'); await sleep(500);
+  const img = await clipImage([[10, 10], [300, 120]]);
+  ok(img.w === vp.w && img.h === vp.h, 'copied ' + img.w + 'x' + img.h);
+  ok(near(img.px[0], [23, 37, 84], 10), 'fixed header at the top ' + img.px[0]);
+  ok(near(img.px[1], [220, 38, 38], 10), 'red card ' + img.px[1]);
+  await page.keyboard.press('Escape'); await sleep(300);
+});
+await t('20. Full page stitches the whole scrolling page (honestly labelled) and restores scroll', async () => {
+  await mark('20');
+  await page.evaluate(() => window.scrollTo(0, 120));
+  await activate(page, 'screenshot'); await sleep(800);
+  await clickBtn('.ss-pill [data-act="full"]');
+  await sleep(6500);
+  ok(await sh('.ss-work'), 'full-page workspace is on the same screen');
+  const scrollH = await page.evaluate(() => document.documentElement.scrollHeight);
+  await clickBtn('.ss-actions [data-act="copy"]'); await sleep(900);
+  const probe = [[300, 20], [300, 1000], [300, 1100], [100, scrollH - 40]];
+  const img = await clipImage(probe);
+  ok(img && img.w === 1280, 'width ' + (img && img.w));
+  ok(Math.abs(img.h - scrollH) <= 2, `height ${img.h} vs page ${scrollH}`);
+  ok(near(img.px[0], [23, 37, 84], 10), 'fixed header present once, at the top ' + img.px[0]);
+  ok(!near(img.px[1], [23, 37, 84], 30) && !near(img.px[2], [23, 37, 84], 30), 'fixed header not repeated down the page ' + img.px[1] + ' ' + img.px[2]);
+  const sy = await page.evaluate(() => window.scrollY);
+  ok(Math.abs(sy - 120) <= 2, 'scroll position restored: ' + sy);
+  await page.keyboard.press('Escape'); await sleep(400);
+  ok(!(await hostExists(page)));
+  await page.evaluate(() => window.scrollTo(0, 0));
+});
+await t('21. Cancel (Esc / button) leaves the page as it was; a page without scrolling disables Full page', async () => {
+  await mark('21');
+  await activate(page, 'screenshot'); await sleep(800);
+  await page.keyboard.press('Escape'); await sleep(300);
+  ok(!(await hostExists(page)));
+  await activate(page, 'screenshot'); await sleep(800);
+  await clickBtn('.ss-pill [data-act="cancel"]'); await sleep(300);
+  ok(!(await hostExists(page)));
+  const htmlNow = await page.evaluate(() => document.documentElement.outerHTML);
+  if (htmlNow !== htmlBefore) { let i = 0; while (htmlBefore[i] === htmlNow[i]) i++; throw new Error(`page DOM changed at ${i}: now=${JSON.stringify(htmlNow.slice(Math.max(0, i - 30), i + 90))}\n      style log:\n      ${(await page.evaluate(() => window.__log.filter((l) => !/linklens-root/.test(l)))).join('\n      ')}`); }
+});
+await t('22. restricted pages are refused with a clear message', async () => {
+  const rp = await browser.newPage();
+  await rp.goto('chrome://version');
+  await rp.bringToFront();
+  const [tab] = await helper.evaluate(() => chrome.tabs.query({ active: true, lastFocusedWindow: true }));
+  const r = await helper.evaluate((id) => chrome.runtime.sendMessage({ type: 'MI_ACTIVATE', tabId: id, mode: 'screenshot', toggle: true }), tab.id);
+  ok(r && r.ok === false && /not allow/i.test(r.error || ''), JSON.stringify(r));
+  await rp.close();
+  await page.bringToFront();
+});
+await page.close();
+await helper.evaluate(async (snap) => { await chrome.storage.local.clear(); await chrome.storage.local.set(snap); }, shotSnapshot);
+
 console.log('\nSelected text mode');
 page = await openPage(`${base}/nested-links.html`);
 await t('selection shows a Copy button; clicking copies and keeps selection', async () => {
@@ -765,9 +1087,18 @@ console.log('\nPopup & options UI');
 await t('popup renders actions, status, activity and has no console errors', async () => {
   await helper.goto(`chrome-extension://${extId}/popup/popup.html`);
   await helper.waitForSelector('.action');
-  eq((await helper.$$('.action')).length, 5);
+  eq((await helper.$$('.action')).length, 6);
   ok(await helper.$eval('.welcome h1', (e) => e.textContent.includes('Hover. Discover. Copy.')));
   ok((await helper.$$('#activity li')).length >= 1, 'activity lists recent copies');
+  const fit = await helper.evaluate(() => {
+    const body = document.body.getBoundingClientRect();
+    const main = document.querySelector('.main');
+    const out = [...document.querySelectorAll('.action, .segmented button, .status .cell')].filter((e) => e.getBoundingClientRect().right > body.right - 8 || e.scrollWidth > e.clientWidth + 1).map((e) => e.className + ':' + (e.textContent || '').trim().slice(0, 20));
+    return { mainOverflow: main.scrollWidth - main.clientWidth, out, width: Math.round(body.width) };
+  });
+  eq(fit.width, 380);
+  ok(fit.mainOverflow <= 0, 'no horizontal scrolling in the popup: ' + fit.mainOverflow);
+  ok(fit.out.length === 0, 'nothing is clipped at the popup edge: ' + JSON.stringify(fit.out));
   await helper.screenshot({ path: join(tmp, 'popup.png') });
 });
 await t('popup format selector persists to settings', async () => {

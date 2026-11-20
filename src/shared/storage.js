@@ -1,4 +1,4 @@
-import { DEFAULT_SETTINGS, STORAGE_KEYS, HISTORY_LIMIT, HISTORY_ENTRY_MAX_CHARS } from './constants.js';
+import { DEFAULT_SETTINGS, STORAGE_KEYS, HISTORY_LIMIT, HISTORY_ENTRY_MAX_CHARS, SHOT_DEFAULTS } from './constants.js';
 import { uid } from './helpers.js';
 
 const area = () => chrome.storage.local;
@@ -60,9 +60,22 @@ export async function getLast() {
 }
 
 export function onStorageChange(cb) {
+  // An orphaned content script (the extension was reloaded while the page stayed open) has no chrome.storage any more.
+  if (!(typeof chrome !== 'undefined' && chrome.storage && chrome.storage.onChanged)) return () => {};
   const fn = (changes, areaName) => {
     if (areaName === 'local') cb(changes);
   };
   chrome.storage.onChanged.addListener(fn);
   return () => chrome.storage.onChanged.removeListener(fn);
+}
+
+export async function getShotPrefs() {
+  try {
+    const res = await area().get(STORAGE_KEYS.SHOT_PREFS);
+    return { ...SHOT_DEFAULTS, ...(res[STORAGE_KEYS.SHOT_PREFS] || {}) };
+  } catch (_) { return { ...SHOT_DEFAULTS }; }
+}
+
+export async function saveShotPrefs(prefs) {
+  try { await area().set({ [STORAGE_KEYS.SHOT_PREFS]: { ...SHOT_DEFAULTS, ...prefs } }); } catch (_) { /* extension context invalidated */ }
 }
