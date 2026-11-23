@@ -1,6 +1,6 @@
 import { MODES, DEFAULT_SETTINGS } from '../../shared/constants.js';
 import { MSG } from '../../shared/message-types.js';
-import { getSettings, onStorageChange } from '../../shared/storage.js';
+import { getSettings, onStorageChange, getUtilsPos, saveUtilsPos } from '../../shared/storage.js';
 import { rafThrottle, truncate, extensionAlive } from '../../shared/helpers.js';
 import { logger } from '../../utils/logger.js';
 import { errorMessage } from '../../utils/error-handler.js';
@@ -16,6 +16,8 @@ import { sectionMode } from '../modes/section-mode.js';
 import { textMode } from '../modes/text-mode.js';
 import { imagesMode } from '../modes/images-mode.js';
 import { screenshotMode } from '../modes/screenshot-mode.js';
+import { textUtilsMode } from '../modes/textutils-mode.js';
+import { measureMode } from '../modes/measure-mode.js';
 import { createShotSession } from '../screenshot/shot-session.js';
 import { createShadowUI } from '../ui/shadow-root-ui.js';
 import { createHighlight } from '../ui/selection-highlight.js';
@@ -27,11 +29,14 @@ import { createPreview } from '../ui/preview-panel.js';
 import { createLinkPanel } from '../ui/link-panel.js';
 import { createImageTip } from '../ui/image-inspector.js';
 import { createTextPanel } from '../ui/text-inspector.js';
+import { createTextUtilsPanel } from '../ui/text-utils-panel.js';
+import { createMeasureOverlay } from '../ui/measure-overlay.js';
+import { readBox, boxLayers, readGaps, measureBetween, shortSelector, cssSummary, deepElementAt } from './measure.js';
 import { readTextInfo, textTargetAt, textRectAt } from './text-info.js';
 import { imageTargetAt, clearImageCaches, startImageIndex, stopImageIndex } from './image-info.js';
 import { findLinkAt, readLinkInfo } from './link-info.js';
 
-const MODE_DEFS = { element: elementMode, card: cardMode, section: sectionMode, text: textMode, images: imagesMode, screenshot: screenshotMode };
+const MODE_DEFS = { element: elementMode, card: cardMode, section: sectionMode, text: textMode, images: imagesMode, screenshot: screenshotMode, textutils: textUtilsMode, measure: measureMode };
 const SWALLOWED = ['pointerdown', 'pointerup', 'mousedown', 'mouseup', 'dblclick', 'auxclick', 'touchstart', 'touchend'];
 const IS_TOP = (() => { try { return window.top === window; } catch (_) { return true; } })();
 
@@ -55,6 +60,12 @@ export function createPickerController() {
   let handleState = null; // { el, hovered } — the target the visible toolbar handle belongs to
   let handleTimer = 0;
   let shot = null; // screenshot session (Screenshot mode only)
+  let measureBase = null; // element under the pointer in Dimensions mode
+  let measureTarget = null; // the element being measured (the base, or one of its parents via Alt+Up)
+  let measureLevel = 0; // how many parents above the base
+  let measurePin = null; // element the distances are measured from
+  let measureShift = false; // Shift held: distance to the parent
+  let utilsText = '' // what was in the Text Utils box when it was last closed (kept in memory only, for this page)
   let imageHover = null; // { el, kind, url } under the pointer in Inspect mode
   let textHover = false; // the typography panel is describing the text under the pointer
   let linkEl = null; // anchor whose attribute panel is showing
@@ -80,6 +91,8 @@ export function createPickerController() {
       linkPanel: createLinkPanel(ui, { onCopy: copyLinkPart, onEnableFull: () => { try { chrome.runtime.sendMessage({ type: MSG.OPEN_OPTIONS }); } catch (_) { /* context invalidated */ } }, onLeave: (e) => { overUI = false; last = { x: e.clientX, y: e.clientY }; scheduleUpdate(); } }), // before the toolbar so the toolbar menu stacks above it
       imageTip: createImageTip(ui),
       textPanel: createTextPanel(ui, { onCopy: copyTextPart, onLeave: (e) => { last = { x: e.clientX, y: e.clientY }; scheduleImage(); } }),
+      measure: IS_TOP ? createMeasureOverlay(ui) : null,
+      textUtils: IS_TOP ? createTextUtilsPanel(ui, { onCopy: copyUtilsText, onClose: () => setMode(null), loadPos: getUtilsPos, savePos: saveUtilsPos }) : null,
       toolbar: createToolbar(ui, { onAction: onToolbarAction }),
       toaster: createToaster(ui, () => settings.toastEnabled),
       selection: createSelectionButton(ui, { onCopy: copySelection }),
@@ -108,6 +121,16 @@ export function createPickerController() {
     on(document, 'selectionchange', scheduleSelection);
     on(window, 'scroll', rafThrottle(() => { updateSelectionButton(); }), { capture: true, passive: true });
     on(window, 'keydown', onKeyDown, true);
+
+    if (mode === MODES.MEASURE) {
+      on(window, 'pointermove', onMeasureMove, { capture: true, passive: true });
+      on(window, 'scroll', scheduleMeasure, { capture: true, passive: true });
+      on(window, 'resize', scheduleMeasure, { passive: true });
+      on(window, 'keyup', (e) => { if (e.key === 'Shift' && measureShift) { measureShift = false; scheduleMeasure(); } }, true);
+      on(document, 'mouseleave', () => { measureBase = measureTarget = null; if (parts.measure) parts.measure.hide(); });
+      for (const t of SWALLOWED) on(window, t, onMeasureSwallow, { capture: true, passive: true });
+      on(window, 'click', onMeasureClick, true);
+    }
 
     if (mode === MODES.IMAGES) {
       on(window, 'pointermove', onImageMove, { capture: true, passive: true });
@@ -153,6 +176,11 @@ export function createPickerController() {
     imageHover = null;
     textHover = false;
     if (shot) { shot.destroy(); shot = null; }
+    stopUtils();
+    measureBase = measureTarget = measurePin = null;
+    measureLevel = 0;
+    measureShift = false;
+    if (parts && parts.measure) parts.measure.hide();
     stopImageIndex();
     if (parts) { parts.imageTip.hide(); parts.textPanel.hideNow(); parts.highlight.hide(); }
     if (cursorStyle) cursorStyle.remove();
@@ -188,7 +216,7 @@ export function createPickerController() {
   async function setMode(next, { broadcast = true } = {}) {
     if (next === mode) return mode;
     if (next && !extensionAlive()) { showReloadNotice(); return mode; }
-    if (next === MODES.SCREENSHOT && !IS_TOP) return mode; // the capture UI lives in the top frame only
+    if ((next === MODES.SCREENSHOT || next === MODES.TEXTUTILS || next === MODES.MEASURE) && !IS_TOP) return mode; // these panels live in the top frame only
     if (mode) { detach(); hovered = null; }
     mode = next;
     if (!mode) {
@@ -208,7 +236,8 @@ export function createPickerController() {
           if (ui) { ui.setAccent(settings.highlightColor); renderHover(); }
         });
       }
-      if (parts.indicator) { if (mode === MODES.SCREENSHOT) parts.indicator.hide(); else parts.indicator.show(mode); }
+      if (parts.indicator) { if (mode === MODES.SCREENSHOT || mode === MODES.TEXTUTILS) parts.indicator.hide(); else parts.indicator.show(mode); }
+      if (mode === MODES.TEXTUTILS) startUtils();
       if (mode === MODES.SCREENSHOT) startShot();
       if (mode === MODES.IMAGES) { clearImageCaches(); startImageIndex(); }
     }
@@ -255,6 +284,90 @@ export function createPickerController() {
       hovered.raw = raw; // same target: keep the user's ArrowUp/Down level
     } else hovered = next;
     renderHover(true);
+  }
+
+  /* ---------------- Dimensions (box model, gaps and distances) ---------------- */
+
+  const plain = (r) => ({ left: r.left, top: r.top, right: r.right, bottom: r.bottom, width: r.width, height: r.height });
+  const scheduleMeasure = rafThrottle(() => renderMeasure());
+
+  function onMeasureMove(e) {
+    if (ui.owns(e)) { parts.measure.hide(); return; }
+    last = { x: e.clientX, y: e.clientY };
+    measureShift = e.shiftKey;
+    scheduleMeasure();
+  }
+
+  function renderMeasure() {
+    if (mode !== MODES.MEASURE || !parts || !parts.measure || last.x < 0) return;
+    const raw = deepElementAt(last.x, last.y);
+    if (!raw || raw === document.documentElement) { measureBase = measureTarget = null; parts.measure.hide(); return; }
+    if (raw !== measureBase) { measureBase = raw; measureLevel = 0; }
+    let el = raw;
+    let up = 0;
+    while (up < measureLevel && el.parentElement && el.parentElement !== document.documentElement) { el = el.parentElement; up++; }
+    measureLevel = up;
+    measureTarget = el;
+    let box;
+    try { box = readBox(el); } catch (_) { parts.measure.hide(); return; }
+    if (measurePin && !measurePin.isConnected) measurePin = null;
+    const layers = boxLayers(box);
+    const pinned = measurePin === el;
+    let between = null;
+    if (measurePin && !pinned) between = measureBetween(plain(measurePin.getBoundingClientRect()), box.rect);
+    else if (!measurePin && measureShift && el.parentElement) {
+      try { between = measureBetween(boxLayers(readBox(el.parentElement)).padding, box.rect); } catch (_) { /* detached */ }
+    }
+    parts.measure.render({
+      box, layers, gaps: readGaps(el, box), pin: measurePin ? plain(measurePin.getBoundingClientRect()) : null,
+      between, label: shortSelector(el), pointer: last, pinned, shiftHint: !measurePin && measureShift,
+    });
+  }
+
+  function onMeasureSwallow(e) {
+    if (ui.owns(e)) return;
+    e.stopImmediatePropagation(); // site handlers must not react to the press that pins an element
+  }
+
+  function onMeasureClick(e) {
+    if (ui.owns(e)) return;
+    e.preventDefault(); // no navigation, no form submits
+    e.stopImmediatePropagation();
+    if (e.button !== 0) return;
+    last = { x: e.clientX, y: e.clientY };
+    renderMeasure();
+    if (!measureTarget) return;
+    measurePin = measurePin === measureTarget ? null : measureTarget;
+    renderMeasure();
+  }
+
+  async function copyMeasure() {
+    if (!measureTarget || !measureTarget.isConnected) { toast('Hover an element first', 'error'); return false; }
+    const text = cssSummary(readBox(measureTarget), shortSelector(measureTarget));
+    const res = await writeClipboard({ text });
+    toast(res.ok ? 'Copied dimensions' : res.error || 'Copy failed', res.ok ? 'success' : 'error', res.ok ? shortSelector(measureTarget) : '');
+    if (res.ok) lastCopyAt = Date.now();
+    return !!res.ok;
+  }
+
+  /* ---------------- Text Utils (floating panel: case, spaces, find & replace) ---------------- */
+
+  /** Opens with the text selected on the page (if any), otherwise with what was in the box last time. */
+  function startUtils() {
+    if (!parts || !parts.textUtils) return;
+    const sel = window.getSelection();
+    const picked = sel && !sel.isCollapsed ? sel.toString() : '';
+    parts.textUtils.show(picked.trim() ? picked : utilsText);
+  }
+
+  async function copyUtilsText(text) {
+    const res = await writeClipboard({ text });
+    toast(res.ok ? 'Copied text' : res.error || 'Copy failed', res.ok ? 'success' : 'error', res.ok ? `${Array.from(text).length.toLocaleString('en-US')} chars` : '');
+    return !!res.ok;
+  }
+
+  function stopUtils() {
+    if (parts && parts.textUtils && parts.textUtils.isOpen()) { utilsText = parts.textUtils.getText(); parts.textUtils.hide(); }
   }
 
   /* ---------------- screenshot (capture, select, edit: all on this page) ---------------- */
@@ -625,6 +738,7 @@ export function createPickerController() {
   async function copyHovered() {
     if (!mode) return false;
     if (Date.now() - lastCopyAt < 250) return true;
+    if (mode === MODES.MEASURE) return copyMeasure();
     if (mode === MODES.IMAGES) return textHover ? copyTextColor() : imageHover ? copyImageUrl() : false;
     if (mode === MODES.TEXT || !hovered) {
       const sel = window.getSelection();
@@ -644,7 +758,7 @@ export function createPickerController() {
 
   function updateSelectionButton() {
     if (!parts || !mode) return;
-    if (mode === MODES.SCREENSHOT) { parts.selection.hide(); return; }
+    if (mode === MODES.SCREENSHOT || mode === MODES.TEXTUTILS || mode === MODES.MEASURE) { parts.selection.hide(); return; }
     const sel = window.getSelection();
     if (mouseDown || !sel || sel.isCollapsed || !sel.toString().trim() || sel.rangeCount === 0) { parts.selection.hide(); return; }
     const anchor = sel.anchorNode && (sel.anchorNode.nodeType === 1 ? sel.anchorNode : sel.anchorNode.parentElement);
@@ -662,6 +776,16 @@ export function createPickerController() {
   function onKeyDown(e) {
     if (!mode) return;
     if (mode === MODES.SCREENSHOT && shot && shot.onKeyDown(e)) return;
+    if (mode === MODES.MEASURE) {
+      if (e.key === 'Shift' && !measureShift) { measureShift = true; scheduleMeasure(); }
+      if (e.altKey && !e.ctrlKey && !e.metaKey && (e.key === 'ArrowUp' || e.key === 'ArrowDown')) {
+        e.preventDefault();
+        measureLevel = Math.max(0, measureLevel + (e.key === 'ArrowUp' ? 1 : -1));
+        renderMeasure();
+        return;
+      }
+    }
+    if (mode === MODES.TEXTUTILS && ui.owns(e)) return; // typing in the Text Utils box: the panel handles its own keys
     if (e.key === 'Escape') {
       if (parts.preview.isOpen()) { parts.preview.close(); e.preventDefault(); e.stopImmediatePropagation(); return; }
       e.preventDefault();
@@ -670,7 +794,7 @@ export function createPickerController() {
       return;
     }
     if (e.altKey && !e.ctrlKey && !e.metaKey) {
-      if (e.code === 'KeyC' && (hoverOn() || mode === MODES.IMAGES)) { e.preventDefault(); copyHovered(); return; }
+      if (e.code === 'KeyC' && (hoverOn() || mode === MODES.IMAGES || mode === MODES.MEASURE)) { e.preventDefault(); copyHovered(); return; }
       if (e.code === 'KeyE') { e.preventDefault(); setMode(MODES.ELEMENT); return; }
       if (e.code === 'KeyS') { e.preventDefault(); setMode(MODES.SECTION); return; }
       if ((e.key === 'ArrowUp' || e.key === 'ArrowDown') && hoverOn() && hovered) {

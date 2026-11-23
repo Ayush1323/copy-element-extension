@@ -1147,7 +1147,7 @@ await t('17b. the on-page mode bar has a Screenshot tab that starts a capture fr
   const btn = await sh('.seg [data-m="screenshot"]');
   ok(btn, 'Screenshot tab present next to Images');
   const labels = await (await sh('.seg')).evaluate((e) => [...e.querySelectorAll('button')].map((b) => b.dataset.m));
-  eq(labels.join(','), 'element,card,section,text,images,screenshot');
+  eq(labels.join(','), 'element,card,section,text,images,screenshot,textutils,measure');
   const bb = await btn.boundingBox();
   await page.mouse.click(bb.x + bb.width / 2, bb.y + bb.height / 2); await sleep(1300);
   ok(await sh('.ss-sel'), 'capture started from the bar');
@@ -1230,6 +1230,290 @@ await t('22. restricted pages are refused with a clear message', async () => {
 });
 await page.close();
 await helper.evaluate(async (snap) => { await chrome.storage.local.clear(); await chrome.storage.local.set(snap); }, shotSnapshot);
+
+console.log('\nTest X — Text Utils: a draggable on-page panel (case, spaces, find & replace, copy)');
+{
+  await helper.evaluate(() => chrome.storage.local.remove(['mi_textutils_pos']));
+  const xpage = await openPage(`${base}/typography.html`, { stubExternal: false });
+  await xpage.evaluate(() => { window.__keys = 0; document.addEventListener('keydown', () => window.__keys++); window.__flash = []; const tick = () => { const r = document.querySelector('linklens-root'); const el = r && r.shadowRoot && r.shadowRoot.querySelector('.tu'); if (el && !el.hidden && getComputedStyle(el).visibility !== 'hidden') { const b = el.getBoundingClientRect(); if (b.left < 8 && b.top < 8) window.__flash.push([b.left, b.top]); } requestAnimationFrame(tick); }; tick(); });
+  const xui = (sel) => ui(xpage, sel);
+  const xval = async () => (await xui('.tu-ta')).evaluate((e) => e.value);
+  const xclick = async (sel) => { const b = await xui(sel); const bb = await b.boundingBox(); await xpage.mouse.click(bb.x + bb.width / 2, bb.y + bb.height / 2); await sleep(120); };
+  const xfill = async (text) => { const ta = await xui('.tu-ta'); await ta.focus(); await ta.evaluate((e) => { e.value = ''; }); await xpage.keyboard.type(text); await sleep(80); };
+  const panelBox = async () => (await xui('.tu')).boundingBox();
+  const view = await xpage.evaluate(() => [innerWidth, innerHeight]);
+
+  await t('X1. Text Utils opens as a panel on the right side of the page, on screen, focused and ready to type (page untouched)', async () => {
+    const r = await activate(xpage, 'textutils');
+    ok(r && r.ok, JSON.stringify(r));
+    await sleep(500);
+    const el = await xui('.tu');
+    ok(el && !(await el.evaluate((e) => e.hidden)), 'panel visible');
+    const b = await panelBox();
+    ok(b.x > view[0] / 2, 'on the right side: x=' + b.x);
+    ok(b.x >= 0 && b.y >= 0 && b.x + b.width <= view[0] && b.y + b.height <= view[1], 'fully on screen: ' + JSON.stringify(b));
+    eq(await xpage.evaluate(() => { const r = document.querySelector('linklens-root').shadowRoot; return r.activeElement && r.activeElement.className; }), 'tu-ta', 'text box has focus');
+    for (const t of ['upper', 'lower', 'first', 'words', 'spaces', 'dash', 'under']) ok(await xui(`[data-tool="${t}"]`), 'tool ' + t);
+    ok(await xui('[data-tu="find"]') && await xui('[data-tu="copy"]') && await xui('[data-tu="close"]'), 'replace, copy, close');
+    ok(!(await xui('.indicator')) || (await (await xui('.indicator')).evaluate((e) => e.hidden)), 'no mode bar on top of the panel');
+    eq(await xpage.evaluate(() => (window.__flash || []).length), 0, 'never flashed in the top-left corner');
+  });
+  await t('X2. the seven text tools do exactly what their names say', async () => {
+    const cases = [
+      ['upper', 'hello World', 'HELLO WORLD'],
+      ['lower', 'Hello WORLD', 'hello world'],
+      ['first', 'hello world. this is it', 'Hello world. This is it'],
+      ['words', 'hELLO wORLD again', 'Hello World Again'],
+      ['spaces', '  too    many   spaces  here ', 'too many spaces here'],
+      ['dash', 'make   this a slug', 'make-this-a-slug'],
+      ['under', 'make this snake case', 'make_this_snake_case'],
+    ];
+    for (const [tool, input, expected] of cases) { await xfill(input); await xclick(`[data-tool="${tool}"]`); eq(await xval(), expected, tool); }
+  });
+  await t('X3. with part of the text selected only that part changes', async () => {
+    await xfill('keep this CHANGE ME keep this');
+    await (await xui('.tu-ta')).evaluate((e) => { e.focus(); e.setSelectionRange(10, 19); });
+    await xclick('[data-tool="lower"]');
+    eq(await xval(), 'keep this change me keep this');
+    await (await xui('.tu-ta')).evaluate((e) => { e.focus(); e.setSelectionRange(0, 4); });
+    await xclick('[data-tool="upper"]');
+    eq(await xval(), 'KEEP this change me keep this');
+  });
+  await t('X4. find & replace: plain, match case, regex, and clear messages for no match / bad pattern', async () => {
+    await xfill('Cat cat CAT a.b axb');
+    await xclick('[data-tu="find"]');
+    ok(!(await (await xui('.tu-find')).evaluate((e) => e.hidden)), 'find box open');
+    const type = async (sel, v) => { const i = await xui(sel); await i.click({ clickCount: 3 }); await xpage.keyboard.type(v); };
+    await type('[data-f="find"]', 'cat'); await type('[data-f="repl"]', 'dog'); await xclick('[data-tu="replace"]');
+    eq(await xval(), 'dog dog dog a.b axb'); ok(/Replaced 3 matches/.test(await uiText(xpage, '.tu-msg')), await uiText(xpage, '.tu-msg'));
+    await type('[data-f="find"]', 'a.b'); await type('[data-f="repl"]', 'X'); await xclick('[data-tu="replace"]');
+    eq(await xval(), 'dog dog dog X axb', 'a plain "." is a real dot');
+    await type('[data-f="find"]', 'zzz'); await xclick('[data-tu="replace"]');
+    ok(/No matches/.test(await uiText(xpage, '.tu-msg')));
+    await xclick('.tu-chk:nth-of-type(2) input');
+    await type('[data-f="find"]', '('); await xclick('[data-tu="replace"]');
+    ok(/not a valid pattern/.test(await uiText(xpage, '.tu-msg')), await uiText(xpage, '.tu-msg'));
+    await type('[data-f="find"]', '(d)(o)g'); await type('[data-f="repl"]', '$2$1'); await xclick('[data-tu="replace"]');
+    eq(await xval(), 'od od od X axb', 'regex groups work ($2$1 swaps d and o)');
+    await xclick('.tu-chk:nth-of-type(2) input');
+    await xclick('[data-tu="find"]');
+  });
+  await t('X5. undo, redo and clear', async () => {
+    await xfill('one two'); await xclick('[data-tool="upper"]'); await xclick('[data-tool="dash"]');
+    eq(await xval(), 'ONE-TWO');
+    await xclick('[data-tu="undo"]'); eq(await xval(), 'ONE TWO');
+    await xclick('[data-tu="undo"]'); eq(await xval(), 'one two');
+    await xclick('[data-tu="redo"]'); eq(await xval(), 'ONE TWO');
+    await xpage.keyboard.down('Control'); await xpage.keyboard.press('z'); await xpage.keyboard.up('Control'); eq(await xval(), 'one two', 'Ctrl+Z');
+    await xclick('[data-tu="clear"]'); eq(await xval(), '');
+    ok(await (await xui('[data-tu="copy"]')).evaluate((e) => e.disabled), 'copy disabled when empty');
+    await xclick('[data-tu="undo"]'); eq(await xval(), 'one two', 'clearing can be undone');
+  });
+  await t('X6. Copy puts the text on the clipboard and says so', async () => {
+    await xfill('copy me please'); await xclick('[data-tool="words"]');
+    await xclick('[data-tu="copy"]'); await sleep(250);
+    eq(await clip(xpage), 'Copy Me Please');
+    ok(/Copied/.test(await uiText(xpage, '[data-tu="copy"]')), 'button confirms');
+    ok(/Copied text/.test(await xpage.evaluate(() => Array.from(document.querySelector('linklens-root').shadowRoot.querySelectorAll('.toast')).map((e) => e.textContent).join('|'))), 'toast');
+  });
+  await t('X7. keyboard shortcuts work inside the box, and typing never reaches the page\'s own key handlers', async () => {
+    await xfill('shortcut test words');
+    const before = await xpage.evaluate(() => window.__keys);
+    await xpage.keyboard.down('Alt'); await xpage.keyboard.press('KeyU'); await xpage.keyboard.up('Alt');
+    eq(await xval(), 'SHORTCUT TEST WORDS', 'Alt+U');
+    await xpage.keyboard.down('Alt'); await xpage.keyboard.press('KeyL'); await xpage.keyboard.up('Alt');
+    eq(await xval(), 'shortcut test words', 'Alt+L');
+    await xpage.keyboard.down('Alt'); await xpage.keyboard.down('Shift'); await xpage.keyboard.press('KeyD'); await xpage.keyboard.up('Shift'); await xpage.keyboard.up('Alt');
+    eq(await xval(), 'shortcut_test_words', 'Alt+Shift+D');
+    await xpage.keyboard.down('Control'); await xpage.keyboard.press('Enter'); await xpage.keyboard.up('Control'); await sleep(250);
+    eq(await clip(xpage), 'shortcut_test_words', 'Ctrl+Enter copies');
+    eq(await xpage.evaluate(() => window.__keys), before, 'the page saw none of those key presses');
+    await xclick('[data-tu="keys"]');
+    ok(/Alt\s*U/.test((await uiText(xpage, '.tu-keys')).replace(/\s+/g, ' ')) || /Upper Case/.test(await uiText(xpage, '.tu-keys')), 'shortcut list');
+    await xclick('[data-tu="keys"]');
+  });
+  await t('X8. the panel can be dragged anywhere on screen (never off it), and is remembered next time', async () => {
+    const b0 = await panelBox();
+    const head = await (await xui('.tu-head')).boundingBox();
+    await xpage.mouse.move(head.x + 60, head.y + 18); await xpage.mouse.down(); await xpage.mouse.move(head.x - 300, head.y + 120, { steps: 8 }); await xpage.mouse.up(); await sleep(250);
+    const b1 = await panelBox();
+    ok(Math.abs(b1.x - (b0.x - 360)) <= 2 && Math.abs(b1.y - (b0.y + 102)) <= 2, `moved by the drag: ${JSON.stringify(b0)} → ${JSON.stringify(b1)}`);
+    await xpage.mouse.move(b1.x + 60, b1.y + 18); await xpage.mouse.down(); await xpage.mouse.move(-500, -500, { steps: 6 }); await xpage.mouse.up(); await sleep(200);
+    const b2 = await panelBox();
+    ok(b2.x >= 0 && b2.y >= 0, 'clamped at the top-left edge: ' + JSON.stringify(b2));
+    await xpage.mouse.move(b2.x + 60, b2.y + 18); await xpage.mouse.down(); await xpage.mouse.move(view[0] + 800, view[1] + 800, { steps: 6 }); await xpage.mouse.up(); await sleep(200);
+    const b3 = await panelBox();
+    ok(b3.x + b3.width <= view[0] && b3.y + b3.height <= view[1] + 1, 'clamped at the bottom-right edge: ' + JSON.stringify(b3));
+    await xpage.mouse.move(b3.x + 60, b3.y + 18); await xpage.mouse.down(); await xpage.mouse.move(300, 200, { steps: 6 }); await xpage.mouse.up(); await sleep(300);
+    const spot = await panelBox();
+    const saved = await helper.evaluate(() => chrome.storage.local.get('mi_textutils_pos'));
+    ok(saved.mi_textutils_pos && Math.abs(saved.mi_textutils_pos.x - spot.x) <= 2, 'position saved: ' + JSON.stringify(saved));
+    await xclick('[data-tu="close"]'); await sleep(250);
+    eq(await xpage.evaluate(() => !!document.querySelector('linklens-root')), false, 'closing removes everything');
+    await xpage.evaluate(() => { window.__flash = []; }); // the drag test above parked it in the corner on purpose
+    await activate(xpage, 'textutils'); await sleep(600);
+    const again = await panelBox();
+    ok(Math.abs(again.x - spot.x) <= 2 && Math.abs(again.y - spot.y) <= 2, `reopens where it was left: ${JSON.stringify(spot)} vs ${JSON.stringify(again)}`);
+    eq(await xval(), 'shortcut_test_words', 'and with the text it had');
+    eq(await xpage.evaluate(() => (window.__flash || []).length), 0, 'still no flash in the corner');
+  });
+  await t('X9. text selected on the page is loaded into the box when it opens', async () => {
+    await xpage.keyboard.press('Escape'); await sleep(100); // blur the box
+    await xpage.keyboard.press('Escape'); await sleep(250); // close
+    eq(await xpage.evaluate(() => !!document.querySelector('linklens-root')), false, 'Esc on the page closes it');
+    await xpage.evaluate(() => { const r = document.createRange(); r.selectNodeContents(document.getElementById('grey')); const s = getSelection(); s.removeAllRanges(); s.addRange(r); });
+    await activate(xpage, 'textutils'); await sleep(600);
+    eq(await xval(), 'Hard to read grey caption');
+  });
+  await t('X10. Esc inside the box only leaves it (nothing typed is lost); the page stays fully usable around the panel', async () => {
+    const ta = await xui('.tu-ta'); await ta.focus();
+    await xpage.keyboard.press('Escape'); await sleep(200);
+    ok(await xui('.tu'), 'panel still open after the first Esc');
+    const c = await xpage.$('#fixture-link'); const bb = await c.boundingBox();
+    await xpage.mouse.click(bb.x + bb.width / 2, bb.y + bb.height / 2); await sleep(250);
+    ok(/#top$/.test(xpage.url()), 'the page link still works (no click interception): ' + xpage.url());
+    ok(await xui('.tu'), 'panel unaffected');
+  });
+  await t('X11. other modes have a Text Utils tab, and the popup lists it', async () => {
+    await activate(xpage, 'textutils'); await sleep(300); // toggles off
+    eq(await xpage.evaluate(() => !!document.querySelector('linklens-root')), false);
+    await activate(xpage, 'element'); await sleep(400);
+    ok(await xui('.indicator [data-m="textutils"]'), 'tab in the mode bar');
+    await xclick('.indicator [data-m="textutils"]'); await sleep(500);
+    ok(await xui('.tu') && !(await (await xui('.tu')).evaluate((e) => e.hidden)), 'tab opens the panel');
+    ok((await xui('.outline')) == null || (await (await xui('.outline')).evaluate((e) => e.hidden)), 'no element picker highlight any more');
+    await xpage.mouse.move(5, 5); await xpage.keyboard.press('Escape'); await sleep(250);
+    await xpage.keyboard.press('Escape'); await sleep(250);
+    eq(await xpage.evaluate(() => !!document.querySelector('linklens-root')), false, 'Escape removes everything');
+  });
+  await xpage.close();
+  await helper.evaluate(() => chrome.storage.local.remove(['mi_textutils_pos']));
+}
+
+console.log('\nTest D — Dimensions: box model, flex / grid gaps, pin and measure the distance between elements');
+{
+  const dpage = await openPage(`${base}/measure.html`, { stubExternal: false });
+  const dui = (sel) => ui(dpage, sel);
+  const count = (sel) => dpage.evaluate((q) => document.querySelector('linklens-root').shadowRoot.querySelectorAll(q).length, sel);
+  const texts = (sel) => dpage.evaluate((q) => Array.from(document.querySelector('linklens-root').shadowRoot.querySelectorAll(q)).map((e) => e.textContent.trim()), sel);
+  const move = async (x, y) => { await dpage.mouse.move(x, y, { steps: 3 }); await sleep(350); };
+  const card = async () => { const c = await dui('.ms-card'); return c ? c.evaluate((e) => e.innerText.replace(/\s+/g, ' ')) : ''; };
+  await dpage.evaluate(() => { window.__clicks = 0; document.addEventListener('click', () => window.__clicks++); });
+
+  await t('D1. Dimensions starts quiet; hovering an element draws margin / border / padding / content with their numbers and an info card', async () => {
+    const r = await activate(dpage, 'measure');
+    ok(r && r.ok, JSON.stringify(r));
+    await sleep(400);
+    ok(!(await dui('.ms-card')) || (await (await dui('.ms-card')).evaluate((e) => e.hidden)), 'nothing shown before the pointer is on the page');
+    await move(120, 120);
+    for (const c of ['margin', 'border', 'padding', 'content']) ok(await count(`.ms-box.${c}`) === 1, c + ' layer');
+    const c = await card();
+    ok(/div#b1/.test(c) && /Size 148 × 108/.test(c) && /Margin 10 0/.test(c) && /Border 2/.test(c) && /Padding 12/.test(c), c);
+    const nums = await texts('.ms-v');
+    ok(nums.includes('12') && nums.includes('10'), 'padding and margin numbers: ' + nums);
+    ok((await texts('.ms-size'))[0].includes('148 × 108'), 'size label');
+  });
+  await t('D2. the overlay follows the pointer and updates for the next element', async () => {
+    await move(290, 120);
+    ok(/div#b2/.test(await card()), await card());
+    await move(1000, 700);
+    ok(!/div#b2/.test(await card()), 'moved to empty page');
+  });
+  await t('D3. a flex container shows its gap between the items, with the value', async () => {
+    await move(600, 190);
+    const c = await card();
+    ok(/div#flex/.test(c) && /Gap 24/.test(c) && /Display flex/.test(c), c);
+    eq(await count('.ms-gap'), 2, 'two gaps between three items');
+    eq((await texts('.ms-v')).filter((v) => v === '24').length, 2, 'both labelled 24');
+  });
+  await t('D4. a grid shows row and column gaps separately', async () => {
+    await move(150, 305);
+    const c = await card();
+    ok(/div#grid/.test(c) && /Gap 16 \/ 32/.test(c), c);
+    eq(await count('.ms-gap'), 7, '4 column strips + 3 row strips');
+    const v = await texts('.ms-v');
+    ok(v.includes('16') && v.includes('32'), v.join());
+  });
+  await t('D5. clicking pins an element (the page gets no click, nothing navigates); another element then shows the distance to it', async () => {
+    await move(700, 100);
+    await dpage.mouse.click(700, 100); await sleep(250);
+    ok(await dui('.ms-pinchip'), 'pinned');
+    await move(830, 295);
+    ok((await texts('.ms-v.d')).includes('110'), 'vertical gap A→B is 110: ' + (await texts('.ms-v.d')));
+    ok(/Distance to the pinned element/.test(await card()), await card());
+    eq(await dpage.evaluate(() => window.__clicks), 0, 'the page never saw the click');
+  });
+  await t('D6. an element inside the pinned one shows the distance to every side', async () => {
+    await move(700, 520); await dpage.mouse.click(700, 520); await sleep(250); // pin #outer
+    await move(700, 480);
+    const d = (await texts('.ms-v.d')).sort((a, b) => a - b);
+    eq(d.join(), '20,30,130,200', 'left, top, bottom, right distances: ' + d);
+  });
+  await t('D7. clicking the pinned element again unpins it; links are never followed while measuring', async () => {
+    await move(700, 520); await dpage.mouse.click(700, 520); await sleep(250);
+    ok(!(await dui('.ms-pinchip')), 'unpinned');
+    const lb = await (await dpage.$('#link')).boundingBox();
+    await dpage.mouse.click(lb.x + 5, lb.y + 5); await sleep(250);
+    ok(!/#nav/.test(dpage.url()), 'link not followed: ' + dpage.url());
+    ok(await dui('.ms-pinchip'), 'the click pinned the link instead of following it');
+    await dpage.mouse.click(lb.x + 5, lb.y + 5); await sleep(250); // unpin it again
+  });
+  await t('D8. Alt+↑ measures the parent, Alt+↓ goes back to the child', async () => {
+    await move(120, 120);
+    ok(/div#b1/.test(await card()));
+    await dpage.keyboard.down('Alt'); await dpage.keyboard.press('ArrowUp'); await dpage.keyboard.up('Alt'); await sleep(250);
+    ok(/div#flex/.test(await card()), await card());
+    await dpage.keyboard.down('Alt'); await dpage.keyboard.press('ArrowDown'); await dpage.keyboard.up('Alt'); await sleep(250);
+    ok(/div#b1/.test(await card()), await card());
+  });
+  await t('D9. holding Shift shows the distance from the element to its parent', async () => {
+    await move(700, 480);
+    await dpage.keyboard.down('Shift'); await sleep(300);
+    const d = await texts('.ms-v.d');
+    ok(d.length === 4 && d.includes('20') && d.includes('30'), 'distances to the parent: ' + d);
+    await dpage.keyboard.up('Shift'); await sleep(300);
+    eq((await texts('.ms-v.d')).length, 0, 'gone again when released');
+  });
+  await t('D10. Alt+C copies the measurements as CSS', async () => {
+    await move(120, 120);
+    await dpage.keyboard.down('Alt'); await dpage.keyboard.press('KeyC'); await dpage.keyboard.up('Alt'); await sleep(400);
+    const css = await clip(dpage);
+    ok(/div#b1/.test(css) && /width: 148px;/.test(css) && /height: 108px;/.test(css) && /margin: 10px 0px 10px 0px;/.test(css) && /padding: 12px 12px 12px 12px;/.test(css), css);
+  });
+  await t('D11. the overlay never blocks the page (pointer-events none) and Escape removes everything', async () => {
+    const pe = await dpage.evaluate(() => { const r = document.querySelector('linklens-root').shadowRoot; return ['.ms', '.ms-card'].map((s) => getComputedStyle(r.querySelector(s)).pointerEvents); });
+    eq(pe.join(), 'none,none');
+    await dpage.keyboard.press('Escape'); await sleep(300);
+    eq(await dpage.evaluate(() => !!document.querySelector('linklens-root')), false);
+    eq(await dpage.evaluate(() => window.__clicks), 0);
+  });
+  await dpage.close();
+}
+
+console.log('\nTest P — popup: three big tools on one line, the rest below');
+{
+  const pp = await browser.newPage();
+  await pp.setViewport({ width: 440, height: 900 });
+  await pp.goto(`chrome-extension://${extId}/popup/popup.html`);
+  await pp.waitForSelector('.action');
+  await t('P1. the first row is Text Picker, Text Utils and Screenshot, side by side, as big cards', async () => {
+    const big = await pp.$$eval('#actions .action', (els) => els.map((e) => { const r = e.getBoundingClientRect(); return { t: e.querySelector('.a-title').textContent, x: Math.round(r.x), y: Math.round(r.y), w: Math.round(r.width), h: Math.round(r.height), big: e.classList.contains('big') }; }));
+    eq(big.map((b) => b.t).join(','), 'Text Picker,Text Utils,Screenshot');
+    ok(big.every((b) => b.big && b.y === big[0].y), 'all on one line: ' + JSON.stringify(big));
+    ok(big[0].x < big[1].x && big[1].x < big[2].x, 'left to right in that order');
+    ok(big.every((b) => b.w >= 120 && b.h >= 150), 'big cards: ' + JSON.stringify(big.map((b) => [b.w, b.h])));
+    const bodyW = await pp.evaluate(() => document.body.getBoundingClientRect().width);
+    ok(bodyW >= 430, 'the popup itself is wider: ' + bodyW);
+    ok(big[2].x + big[2].w <= bodyW, 'nothing cut off at the right edge');
+  });
+  await t('P2. the other tools sit below under "More tools", including Dimensions', async () => {
+    const more = await pp.$$eval('#more .action', (els) => els.map((e) => e.querySelector('.a-title').textContent));
+    eq(more.sort().join(','), ['Card Extractor', 'Dimensions', 'Inspect Images & Text', 'Section Extractor', 'Selected Text'].sort().join(','));
+    const yBig = await pp.$eval('#actions', (e) => e.getBoundingClientRect().bottom), yMore = await pp.$eval('#more', (e) => e.getBoundingClientRect().top);
+    ok(yMore > yBig, 'below the big row');
+  });
+  await pp.close();
+}
 
 console.log('\nTest Q — Screenshot quality: the exported image is the captured image, pixel for pixel');
 {
@@ -1360,7 +1644,8 @@ console.log('\nPopup & options UI');
 await t('popup renders actions, status, activity and has no console errors', async () => {
   await helper.goto(`chrome-extension://${extId}/popup/popup.html`);
   await helper.waitForSelector('.action');
-  eq((await helper.$$('.action')).length, 6);
+  eq((await helper.$$('.action')).length, 8);
+  ok(/Text Utils/.test(await helper.$eval('.action[data-mode="textutils"]', (e) => e.textContent)), 'Text Utils card');
   ok(await helper.$eval('.welcome h1', (e) => e.textContent.includes('Hover. Discover. Copy.')));
   ok((await helper.$$('#activity li')).length >= 1, 'activity lists recent copies');
   const fit = await helper.evaluate(() => {
@@ -1369,7 +1654,7 @@ await t('popup renders actions, status, activity and has no console errors', asy
     const out = [...document.querySelectorAll('.action, .segmented button, .status .cell')].filter((e) => e.getBoundingClientRect().right > body.right - 8 || e.scrollWidth > e.clientWidth + 1).map((e) => e.className + ':' + (e.textContent || '').trim().slice(0, 20));
     return { mainOverflow: main.scrollWidth - main.clientWidth, out, width: Math.round(body.width) };
   });
-  eq(fit.width, 380);
+  eq(fit.width, 440);
   ok(fit.mainOverflow <= 0, 'no horizontal scrolling in the popup: ' + fit.mainOverflow);
   ok(fit.out.length === 0, 'nothing is clipped at the popup edge: ' + JSON.stringify(fit.out));
   await helper.screenshot({ path: join(tmp, 'popup.png') });

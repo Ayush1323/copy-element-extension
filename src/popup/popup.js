@@ -12,12 +12,16 @@ const $ = (s) => document.querySelector(s);
 const state = { tab: null, restricted: false, mode: null, settings: null, history: [], last: null, busy: false };
 
 const ACTIONS = [
-  { id: MODES.ELEMENT, title: 'Element Picker', desc: 'Hover & copy any text', iconName: 'pointer', hint: 'Alt+E' },
+  // the three everyday tools: big cards on one line
+  { id: MODES.ELEMENT, title: 'Text Picker', desc: 'Hover & copy any text', iconName: 'pointer', hint: 'Alt+E', featured: true },
+  { id: MODES.TEXTUTILS, title: 'Text Utils', desc: 'Case, spaces & find / replace', iconName: 'textutils', hint: '', featured: true },
+  { id: MODES.SCREENSHOT, title: 'Screenshot', desc: 'Capture & annotate on the page', iconName: 'camera', hint: 'Alt+Shift+S', featured: true },
+  // more tools
+  { id: MODES.MEASURE, title: 'Dimensions', desc: 'Size, spacing & gaps between elements', iconName: 'measure', hint: '' },
+  { id: MODES.IMAGES, title: 'Inspect Images & Text', desc: 'Image size & source, fonts and colors', iconName: 'image', hint: '' },
   { id: MODES.CARD, title: 'Card Extractor', desc: 'Grab a whole card', iconName: 'card', hint: '' },
   { id: MODES.SECTION, title: 'Section Extractor', desc: 'Copy a full section', iconName: 'section', hint: 'Alt+S' },
   { id: MODES.TEXT, title: 'Selected Text', desc: 'Copy highlighted text', iconName: 'text', hint: '' },
-  { id: MODES.SCREENSHOT, title: 'Screenshot', desc: 'Capture & annotate on the page', iconName: 'camera', hint: 'Alt+Shift+S' },
-  { id: MODES.IMAGES, title: 'Inspect Images & Text', desc: 'Image size & source, fonts and colors', iconName: 'image', hint: '' },
 ];
 
 function toast(msg, ok = true) {
@@ -57,10 +61,11 @@ function renderNotice(text, tone = 'warn') {
 }
 
 function renderActions() {
-  const root = $('#actions');
-  root.textContent = '';
+  const big = $('#actions'), more = $('#more');
+  big.textContent = '';
+  more.textContent = '';
   for (const a of ACTIONS) {
-    root.appendChild(renderActionCard({ ...a, active: state.mode === a.id, disabled: state.restricted || state.busy, onClick: activate }));
+    (a.featured ? big : more).appendChild(renderActionCard({ ...a, active: state.mode === a.id, disabled: state.restricted || state.busy, onClick: activate }));
   }
 }
 
@@ -82,7 +87,7 @@ function renderStatus() {
   const active = !!state.mode;
   const domain = state.tab && !state.restricted ? domainOf(state.tab.url) : state.restricted ? 'Restricted page' : '—';
   const last = state.last;
-  const modeName = { element: 'Element Picker', card: 'Card Extractor', section: 'Section Extractor', text: 'Selected Text', images: 'Inspect Images & Text', screenshot: 'Screenshot' }[state.mode];
+  const modeName = { element: 'Element Picker', card: 'Card Extractor', section: 'Section Extractor', text: 'Selected Text', images: 'Inspect Images & Text', screenshot: 'Screenshot', textutils: 'Text Utils', measure: 'Dimensions' }[state.mode];
   $('#status').innerHTML = `
     <div class="cell"><span class="k">${icon('pointer', 13)}Picker</span><span class="v"><i class="dot ${active ? 'on' : ''}"></i>${active ? escapeHtml(modeName) : 'Inactive'}</span></div>
     <div class="cell"><span class="k">${icon('globe', 13)}Website</span><span class="v" title="${escapeHtml(domain)}">${escapeHtml(domain || '—')}</span></div>
