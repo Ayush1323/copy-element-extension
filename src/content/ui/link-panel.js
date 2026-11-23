@@ -1,7 +1,7 @@
 import { h } from './shadow-root-ui.js';
 import { icon } from '../../shared/icons.js';
 import { truncate } from '../../shared/helpers.js';
-import { LINK_PANEL_W } from './placement.js';
+import { LINK_PANEL_W, placeBeside } from './placement.js';
 import { linkSignature, previewDecision } from '../core/link-info.js';
 import { MSG } from '../../shared/message-types.js';
 
@@ -100,29 +100,12 @@ export function createLinkPanel(ui, { onCopy, onLeave, onEnableFull }) {
    */
   function place() {
     if (!anchorRect) return;
-    const pad = 6;
     const vw = document.documentElement.clientWidth || window.innerWidth;
     const vh = window.innerHeight;
     const w = Math.min(LINK_PANEL_W, vw - 12);
     el.style.width = `${w}px`;
-    const hgt = Math.min(el.offsetHeight || 200, vh - 2 * pad);
-    const r = anchorRect;
-    const cl = (v, lo, hi) => Math.min(Math.max(v, lo), Math.max(lo, hi));
-    // strictly inside: the pointer legitimately touches the panel's edge when travelling from the link into it
-    const hit = (p) => pointer && pointer.x > p.left && pointer.x < p.left + w && pointer.y > p.top && pointer.y < p.top + hgt;
-    const left0 = cl(r.left, pad, vw - w - pad);
-    const sideTop = cl(r.top - 6, pad, vh - hgt - pad);
-    const cands = [];
-    if (r.bottom + hgt <= vh - pad) cands.push({ left: left0, top: r.bottom, edge: 'top', gap: 8 });
-    if (r.top - TOOLBAR_CLEAR - hgt >= pad) cands.push({ left: left0, top: r.top - TOOLBAR_CLEAR - hgt, edge: 'bottom', gap: TOOLBAR_CLEAR });
-    if (r.right + 4 + w <= vw - pad) cands.push({ left: r.right + 4, top: sideTop, edge: 'left', gap: 8 });
-    if (r.left - 4 - w >= pad) cands.push({ left: r.left - 4 - w, top: sideTop, edge: 'right', gap: 8 });
-    let pos = cands.find((c) => !hit(c));
-    if (!pos) {
-      // nowhere adjacent: far side of the screen from the pointer (reachable: the pointer keeps hovering the link meanwhile)
-      const onLeft = pointer ? pointer.x > vw / 2 : true;
-      pos = { left: onLeft ? pad : Math.max(pad, vw - w - pad), top: cl(pointer && pointer.y > vh / 2 ? pad : vh - hgt - pad, pad, vh - hgt - pad), edge: 'none', gap: 0 };
-    }
+    const hgt = Math.min(el.offsetHeight || 200, vh - 12);
+    const pos = placeBeside(anchorRect, pointer, w, hgt, vw, vh, TOOLBAR_CLEAR);
     el.dataset.edge = pos.edge;
     el.style.setProperty('--gap', `${pos.gap}px`);
     el.style.transform = `translate(${Math.round(pos.left)}px, ${Math.round(pos.top)}px)`;

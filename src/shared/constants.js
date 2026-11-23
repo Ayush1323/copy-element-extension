@@ -42,7 +42,7 @@ export const MODE_META = Object.freeze({
   card: { label: 'Card Extractor', short: 'Card' },
   section: { label: 'Section Extractor', short: 'Section' },
   text: { label: 'Selected Text', short: 'Selection' },
-  images: { label: 'Inspect Images', short: 'Images' },
+  images: { label: 'Inspect Images & Text', short: 'Inspect' },
   screenshot: { label: 'Screenshot', short: 'Screenshot' },
 });
 

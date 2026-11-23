@@ -17,7 +17,7 @@ const ACTIONS = [
   { id: MODES.SECTION, title: 'Section Extractor', desc: 'Copy a full section', iconName: 'section', hint: 'Alt+S' },
   { id: MODES.TEXT, title: 'Selected Text', desc: 'Copy highlighted text', iconName: 'text', hint: '' },
   { id: MODES.SCREENSHOT, title: 'Screenshot', desc: 'Capture & annotate on the page', iconName: 'camera', hint: 'Alt+Shift+S' },
-  { id: MODES.IMAGES, title: 'Inspect Images', desc: 'Size, ratio & source of any image', iconName: 'image', hint: '' },
+  { id: MODES.IMAGES, title: 'Inspect Images & Text', desc: 'Image size & source, fonts and colors', iconName: 'image', hint: '' },
 ];
 
 function toast(msg, ok = true) {
@@ -29,17 +29,23 @@ function toast(msg, ok = true) {
   toast.t = setTimeout(() => (t.hidden = true), 1800);
 }
 
+/** The active tab: one fast browser call. Whether LinkLens is already running there is asked separately (see refreshMode). */
 async function loadTab() {
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
   state.tab = tab || null;
   state.restricted = !tab || isRestrictedUrl(tab.url);
   state.mode = null;
-  if (tab && !state.restricted) {
-    try {
-      const res = await chrome.tabs.sendMessage(tab.id, { type: MSG.GET_STATE });
-      state.mode = res ? res.mode : null;
-    } catch (_) { /* content script not injected → picker inactive */ }
-  }
+}
+
+/** Ask the page which mode is on. A busy page can take a while to answer, so nothing is held back for it. */
+async function refreshMode() {
+  const tab = state.tab;
+  if (!tab || state.restricted) return;
+  try {
+    const res = await chrome.tabs.sendMessage(tab.id, { type: MSG.GET_STATE }, { frameId: 0 });
+    const mode = res ? res.mode : null;
+    if (mode !== state.mode) { state.mode = mode; renderActions(); renderStatus(); }
+  } catch (_) { /* content script not injected → picker inactive */ }
 }
 
 function renderNotice(text, tone = 'warn') {
@@ -76,7 +82,7 @@ function renderStatus() {
   const active = !!state.mode;
   const domain = state.tab && !state.restricted ? domainOf(state.tab.url) : state.restricted ? 'Restricted page' : '—';
   const last = state.last;
-  const modeName = { element: 'Element Picker', card: 'Card Extractor', section: 'Section Extractor', text: 'Selected Text', images: 'Inspect Images', screenshot: 'Screenshot' }[state.mode];
+  const modeName = { element: 'Element Picker', card: 'Card Extractor', section: 'Section Extractor', text: 'Selected Text', images: 'Inspect Images & Text', screenshot: 'Screenshot' }[state.mode];
   $('#status').innerHTML = `
     <div class="cell"><span class="k">${icon('pointer', 13)}Picker</span><span class="v"><i class="dot ${active ? 'on' : ''}"></i>${active ? escapeHtml(modeName) : 'Inactive'}</span></div>
     <div class="cell"><span class="k">${icon('globe', 13)}Website</span><span class="v" title="${escapeHtml(domain)}">${escapeHtml(domain || '—')}</span></div>
@@ -156,10 +162,13 @@ async function activate(mode) {
 }
 
 async function init() {
-  state.settings = await getSettings();
+  // Everything the first paint needs is fetched in parallel; the page itself is never waited for.
+  const [settings, history, last] = await Promise.all([getSettings(), getHistory(), getLast(), loadTab()]);
+  state.settings = settings;
+  state.history = history;
+  state.last = last;
   renderHeader($('#header'), { version: chrome.runtime.getManifest().version, onSettings: () => chrome.runtime.openOptionsPage() });
   renderFooter();
-  await Promise.all([loadTab(), getHistory().then((h) => (state.history = h)), getLast().then((l) => (state.last = l))]);
   if (state.restricted) renderNotice('Chrome blocks extensions on this page (browser pages, the Web Store, or unsupported URLs). Open a regular website to start.');
   renderActions();
   renderFormat();
@@ -170,6 +179,7 @@ async function init() {
     [state.settings, state.history, state.last] = await Promise.all([getSettings(), getHistory(), getLast()]);
     renderFormat(); renderStatus(); renderActivity();
   });
+  refreshMode();
 }
 
 init().catch((e) => { console.error(e); renderNotice('Something went wrong: ' + (e && e.message)); });

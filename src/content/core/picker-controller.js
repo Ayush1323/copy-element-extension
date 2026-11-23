@@ -26,6 +26,8 @@ import { createSelectionButton } from '../ui/selection-button.js';
 import { createPreview } from '../ui/preview-panel.js';
 import { createLinkPanel } from '../ui/link-panel.js';
 import { createImageTip } from '../ui/image-inspector.js';
+import { createTextPanel } from '../ui/text-inspector.js';
+import { readTextInfo, textTargetAt, textRectAt } from './text-info.js';
 import { imageTargetAt, clearImageCaches, startImageIndex, stopImageIndex } from './image-info.js';
 import { findLinkAt, readLinkInfo } from './link-info.js';
 
@@ -53,7 +55,8 @@ export function createPickerController() {
   let handleState = null; // { el, hovered } — the target the visible toolbar handle belongs to
   let handleTimer = 0;
   let shot = null; // screenshot session (Screenshot mode only)
-  let imageHover = null; // { el, kind, url } under the pointer in Inspect Images mode
+  let imageHover = null; // { el, kind, url } under the pointer in Inspect mode
+  let textHover = false; // the typography panel is describing the text under the pointer
   let linkEl = null; // anchor whose attribute panel is showing
   let unsubStorage = null;
   let listeners = [];
@@ -70,11 +73,13 @@ export function createPickerController() {
   function buildUI() {
     ui = createShadowUI();
     ui.mount();
-    ui.setAccent(settings.highlightColor);
+    // first, so every hover panel and toolbar stacks above the mode bar instead of sliding under it
+    const indicator = IS_TOP ? createIndicator(ui, { onMode: (m) => setMode(m), onExit: () => setMode(null) }) : null;
     parts = {
       highlight: createHighlight(ui),
       linkPanel: createLinkPanel(ui, { onCopy: copyLinkPart, onEnableFull: () => { try { chrome.runtime.sendMessage({ type: MSG.OPEN_OPTIONS }); } catch (_) { /* context invalidated */ } }, onLeave: (e) => { overUI = false; last = { x: e.clientX, y: e.clientY }; scheduleUpdate(); } }), // before the toolbar so the toolbar menu stacks above it
       imageTip: createImageTip(ui),
+      textPanel: createTextPanel(ui, { onCopy: copyTextPart, onLeave: (e) => { last = { x: e.clientX, y: e.clientY }; scheduleImage(); } }),
       toolbar: createToolbar(ui, { onAction: onToolbarAction }),
       toaster: createToaster(ui, () => settings.toastEnabled),
       selection: createSelectionButton(ui, { onCopy: copySelection }),
@@ -87,7 +92,7 @@ export function createPickerController() {
         },
         onClose: () => parts.preview.close(),
       }),
-      indicator: IS_TOP ? createIndicator(ui, { onMode: (m) => setMode(m), onExit: () => setMode(null) }) : null,
+      indicator,
     };
   }
 
@@ -123,10 +128,13 @@ export function createPickerController() {
       mo.observe(document.documentElement, { childList: true, subtree: true, attributes: true, attributeFilter: ['class', 'style', 'hidden', 'open'] });
       ro = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(() => renderHover()) : null;
 
-      cursorStyle = document.createElement('style');
-      cursorStyle.setAttribute('data-linklens', 'cursor');
-      cursorStyle.textContent = 'html *:not(linklens-root){cursor:crosshair !important;}';
-      document.documentElement.appendChild(cursorStyle);
+      // The crosshair rule matches every element, so adding it restyles the whole page. Do that right AFTER the first
+      // paint of our own UI instead of before it: the picker appears at once, the cursor follows a frame later.
+      const style = document.createElement('style');
+      style.setAttribute('data-linklens', 'cursor');
+      style.textContent = 'html *:not(linklens-root){cursor:crosshair !important;}';
+      cursorStyle = style;
+      requestAnimationFrame(() => setTimeout(() => { if (cursorStyle === style && mode) document.documentElement.appendChild(style); }, 0));
     }
   }
 
@@ -143,9 +151,10 @@ export function createPickerController() {
     handleState = null;
     hideLinkNow();
     imageHover = null;
+    textHover = false;
     if (shot) { shot.destroy(); shot = null; }
     stopImageIndex();
-    if (parts) { parts.imageTip.hide(); parts.highlight.hide(); }
+    if (parts) { parts.imageTip.hide(); parts.textPanel.hideNow(); parts.highlight.hide(); }
     if (cursorStyle) cursorStyle.remove();
     cursorStyle = null;
   }
@@ -156,6 +165,7 @@ export function createPickerController() {
       parts.toolbar.hide();
       parts.linkPanel.hideNow();
       parts.imageTip.hide();
+      parts.textPanel.hideNow();
       parts.preview.close();
       parts.selection.hide();
       if (parts.indicator) parts.indicator.hide();
@@ -186,9 +196,11 @@ export function createPickerController() {
       if (unsubStorage) unsubStorage();
       unsubStorage = null;
     } else {
-      await ensureSettings();
+      const settingsReady = ensureSettings(); // storage read runs while the interface is being built
       if (!ui) buildUI();
-      else { ui.setAccent(settings.highlightColor); parts.highlight.hide(); parts.toolbar.hide(); }
+      else { parts.highlight.hide(); parts.toolbar.hide(); }
+      await settingsReady;
+      ui.setAccent(settings.highlightColor);
       attach();
       if (!unsubStorage) {
         unsubStorage = onStorageChange(async () => {
@@ -257,18 +269,40 @@ export function createPickerController() {
     shot.start();
   }
 
-  /* ---------------- image inspector (Inspect Images mode) ---------------- */
+  /* ---------------- inspector (Inspect mode: images, backgrounds and text) ---------------- */
 
   function clearImage() {
     imageHover = null;
+    textHover = false;
     if (!parts) return;
     parts.highlight.hide();
     parts.imageTip.hide();
+    parts.textPanel.hideSoon(); // stays a moment so the pointer can travel into it
+  }
+
+  /** Text under the pointer wins over whatever image sits behind it: that is what the reader is pointing at. */
+  function renderText(t) {
+    let rects = null;
+    let info = null;
+    try { rects = textRectAt(t.node, last.x, last.y); info = readTextInfo(t.el, t.node); } catch (_) { /* detached while hovering */ }
+    if (!rects || !info || (rects.all.width === 0 && rects.all.height === 0)) return false;
+    imageHover = null;
+    textHover = true;
+    parts.imageTip.hide();
+    parts.highlight.show(rects.all, describeElement(t.el, 'element'), { showLabel: true });
+    // horizontally the whole text run (so the panel does not shift from line to line), vertically the line under the pointer
+    parts.textPanel.show(info, { left: rects.all.left, right: rects.all.right, top: rects.line.top, bottom: rects.line.bottom }, { x: last.x, y: last.y });
+    return true;
   }
 
   function renderImage() {
     if (mode !== MODES.IMAGES || !parts) return;
-    const t = last.x >= 0 ? imageTargetAt(last.x, last.y) : null;
+    if (last.x < 0) { clearImage(); return; }
+    let tt = null;
+    try { tt = textTargetAt(last.x, last.y); } catch (_) { /* ignore */ }
+    if (tt && renderText(tt)) return;
+    if (textHover) { textHover = false; parts.textPanel.hideSoon(); }
+    const t = imageTargetAt(last.x, last.y);
     if (!t) { clearImage(); return; }
     const r = rectOf(t.el);
     if (r.width === 0 && r.height === 0) { clearImage(); return; }
@@ -281,7 +315,11 @@ export function createPickerController() {
 
   function onImageMove(e) {
     if (!parts) return;
-    if (ui.owns(e)) { clearImage(); return; }
+    if (ui.owns(e)) {
+      if (parts.textPanel.isInside()) { parts.textPanel.cancelHide(); return; } // inside the typography panel: leave everything as it is
+      clearImage();
+      return;
+    }
     last = { x: e.clientX, y: e.clientY };
     scheduleImage();
   }
@@ -292,6 +330,22 @@ export function createPickerController() {
     toast(r.ok ? `Copied ${imageHover.kind === 'bg' ? 'background image' : 'image'} URL` : r.error, r.ok ? 'success' : 'error');
     if (r.ok) lastCopyAt = Date.now();
     return r.ok;
+  }
+
+  /** A value from the typography panel: a colour in HEX / RGB / HSL, the font name or the CSS block. */
+  async function copyTextPart(text, kind) {
+    const r = await writeClipboard({ text });
+    const what = kind === 'css' ? 'CSS' : kind === 'family' ? `font ${text}` : /gradient$/.test(kind) ? 'gradient' : text;
+    toast(r.ok ? `Copied ${what}` : r.error, r.ok ? 'success' : 'error');
+    if (r.ok) lastCopyAt = Date.now();
+    return r.ok;
+  }
+
+  /** Alt+C over text: the text colour as HEX. */
+  async function copyTextColor() {
+    const hex = parts && parts.textPanel.colorHex();
+    if (!hex) return false;
+    return copyTextPart(hex, parts.textPanel.isGradient() ? 'color-gradient' : 'color-hex');
   }
 
   /* ---------------- link attribute panel (Element Picker only) ---------------- */
@@ -571,7 +625,7 @@ export function createPickerController() {
   async function copyHovered() {
     if (!mode) return false;
     if (Date.now() - lastCopyAt < 250) return true;
-    if (mode === MODES.IMAGES) return imageHover ? copyImageUrl() : false;
+    if (mode === MODES.IMAGES) return textHover ? copyTextColor() : imageHover ? copyImageUrl() : false;
     if (mode === MODES.TEXT || !hovered) {
       const sel = window.getSelection();
       if (sel && !sel.isCollapsed) { await copySelection(); return true; }

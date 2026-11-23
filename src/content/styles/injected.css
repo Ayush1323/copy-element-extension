@@ -27,7 +27,7 @@ button { font: inherit; color: inherit; cursor: pointer; border: 0; background: 
 }
 
 /* ---- toolbar: compact handle that expands into the action menu on hover (never blocks hovering content) ---- */
-.toolbar { position: fixed; left: 0; top: 0; pointer-events: auto; animation: pop .14s ease-out; }
+.toolbar { position: fixed; left: 0; top: 0; pointer-events: auto; animation: fadein .14s ease-out; }
 .handle {
   display: flex; align-items: center; gap: 6px; height: 24px; padding: 0 8px 0 9px; border-radius: 7px; cursor: default;
   background: var(--accent); color: #fff; font-weight: 700; font-size: 10.5px; letter-spacing: .05em; white-space: nowrap;
@@ -84,7 +84,7 @@ button { font: inherit; color: inherit; cursor: pointer; border: 0; background: 
 @media (max-width: 640px) { .seg button span { display: none; } }
 
 /* ---- selection button ---- */
-.selbtn { position: fixed; left: 0; top: 0; pointer-events: auto; display: flex; align-items: center; gap: 6px; height: 30px; padding: 0 11px 0 9px; border-radius: 999px; background: var(--navy); color: #fff; font-weight: 600; font-size: 12px; box-shadow: 0 8px 20px -6px rgba(11,30,63,.55); animation: pop .12s ease-out; }
+.selbtn { position: fixed; left: 0; top: 0; pointer-events: auto; display: flex; align-items: center; gap: 6px; height: 30px; padding: 0 11px 0 9px; border-radius: 999px; background: var(--navy); color: #fff; font-weight: 600; font-size: 12px; box-shadow: 0 8px 20px -6px rgba(11,30,63,.55); animation: fadein .12s ease-out; }
 .selbtn:hover { background: var(--accent); }
 .selbtn.ok { background: var(--ok); }
 
@@ -121,6 +121,8 @@ button { font: inherit; color: inherit; cursor: pointer; border: 0; background: 
 .toast small { color: #94A3B8; margin-left: 4px; }
 .toast.out { opacity: 0; transform: translateY(6px); transition: opacity .2s, transform .2s; }
 
+/* panels are positioned with an inline transform: their entrance may only fade, or they would flash at the top-left corner first */
+@keyframes fadein { from { opacity: 0; } to { opacity: 1; } }
 @keyframes pop { from { opacity: 0; transform: translateY(3px) scale(.97); } to { opacity: 1; transform: none; } }
 @keyframes drop { from { opacity: 0; transform: translate(-50%, -8px); } to { opacity: 1; transform: translate(-50%, 0); } }
 @keyframes rise { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
@@ -129,7 +131,7 @@ button { font: inherit; color: inherit; cursor: pointer; border: 0; background: 
 @media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
 
 /* ---- link attribute panel ---- */
-.linkp { position: fixed; left: 0; top: 0; width: 320px; max-height: calc(100vh - 12px); overflow: auto; pointer-events: auto; cursor: default; background: #fff; border: 1px solid var(--line); border-radius: 12px; padding: 8px 10px 10px; box-shadow: 0 10px 28px -8px rgba(11,30,63,.28), 0 2px 6px rgba(11,30,63,.08); animation: pop .12s ease-out; }
+.linkp { position: fixed; left: 0; top: 0; width: 320px; max-height: calc(100vh - 12px); overflow: auto; pointer-events: auto; cursor: default; background: #fff; border: 1px solid var(--line); border-radius: 12px; padding: 8px 10px 10px; box-shadow: 0 10px 28px -8px rgba(11,30,63,.28), 0 2px 6px rgba(11,30,63,.08); animation: fadein .12s ease-out; }
 /* invisible bridge so the pointer can travel from the link into the panel, on whichever side it touches */
 .linkp::before { content: ""; position: absolute; display: none; }
 .linkp[data-edge="top"]::before { display: block; left: 0; right: 0; top: calc(-1 * var(--gap, 8px)); height: var(--gap, 8px); }
@@ -155,7 +157,7 @@ button { font: inherit; color: inherit; cursor: pointer; border: 0; background: 
 .lp-html { display: inline-flex; align-items: center; gap: 6px; height: 26px; padding: 0 9px; border-radius: 7px; border: 1px solid var(--line); color: #1e293b; font-weight: 600; font-size: 11.5px; }
 
 /* ---- image inspector: hover tooltip + page image list ---- */
-.imgtip { position: fixed; left: 0; top: 0; width: 330px; pointer-events: none; background: #fff; border: 1px solid var(--line); border-radius: 12px; padding: 10px; box-shadow: 0 10px 28px -8px rgba(11,30,63,.32), 0 2px 6px rgba(11,30,63,.08); animation: pop .12s ease-out; }
+.imgtip { position: fixed; left: 0; top: 0; width: 330px; pointer-events: none; background: #fff; border: 1px solid var(--line); border-radius: 12px; padding: 10px; box-shadow: 0 10px 28px -8px rgba(11,30,63,.32), 0 2px 6px rgba(11,30,63,.08); animation: fadein .12s ease-out; }
 .it-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 8px; }
 .it-chip { padding: 2px 8px; border-radius: 6px; background: var(--soft); color: var(--accent); font-weight: 700; font-size: 10.5px; letter-spacing: .05em; white-space: nowrap; }
 .it-hint { color: var(--muted); font-size: 10.5px; white-space: nowrap; }
@@ -223,7 +225,7 @@ button { font: inherit; color: inherit; cursor: pointer; border: 0; background: 
 .ss-btn.ok { background: var(--ok); color: #fff; }
 
 /* floating toolbars */
-.ss-tb { position: fixed; left: 0; top: 0; z-index: 2; pointer-events: auto; display: flex; align-items: center; gap: 3px; padding: 5px; border-radius: 13px; will-change: transform; animation: pop .14s ease-out; user-select: none; -webkit-user-select: none; }
+.ss-tb { position: fixed; left: 0; top: 0; z-index: 2; pointer-events: auto; display: flex; align-items: center; gap: 3px; padding: 5px; border-radius: 13px; will-change: transform; animation: fadein .14s ease-out; user-select: none; -webkit-user-select: none; }
 .ss-tools { flex-direction: column; }
 .ss-tb.moving { cursor: grabbing; }
 .ss-grip { display: grid; place-items: center; width: 22px; height: 28px; color: #94A3B8; cursor: grab; flex: none; touch-action: none; }
@@ -266,7 +268,7 @@ button { font: inherit; color: inherit; cursor: pointer; border: 0; background: 
 .ss-progress { position: fixed; top: 16px; left: 50%; transform: translateX(-50%); pointer-events: auto; display: flex; align-items: center; gap: 10px; padding: 7px 8px 7px 14px; border-radius: 999px; background: #0F172A; color: #fff; font: 600 12.5px/1 inherit; box-shadow: 0 14px 30px -8px rgba(11,30,63,.55); }
 .ss-progress .ss-chip { color: #E2E8F0; height: 28px; }
 .ss-spin { width: 14px; height: 14px; border-radius: 50%; border: 2px solid rgba(255,255,255,.3); border-top-color: #fff; animation: spin .8s linear infinite; }
-.ss-pop { position: fixed; left: 0; top: 0; z-index: 4; width: 300px; padding: 12px; border-radius: 14px; pointer-events: auto; display: grid; gap: 10px; animation: pop .12s ease-out; }
+.ss-pop { position: fixed; left: 0; top: 0; z-index: 4; width: 300px; padding: 12px; border-radius: 14px; pointer-events: auto; display: grid; gap: 10px; animation: fadein .12s ease-out; }
 .ss-pop-title { font-weight: 700; font-size: 13.5px; color: var(--ink); }
 .ss-field { display: grid; gap: 5px; }
 .ss-field > span { color: var(--muted); font: 700 10px/1 inherit; text-transform: uppercase; letter-spacing: .05em; }
@@ -282,3 +284,38 @@ button { font: inherit; color: inherit; cursor: pointer; border: 0; background: 
 .ss-field .ss-seg { justify-self: start; }
 .ss-pop { width: 340px; }
 .ss-note { color: var(--muted); font-size: 11px; line-height: 1.35; }
+
+/* ---- text inspector (Inspect mode): typography panel, shares the link panel's frame + hover bridge ---- */
+.textp { width: 320px; }
+.tp-hint { margin-left: auto; color: var(--muted); font-size: 10.5px; white-space: nowrap; }
+.tp-sample { margin: 2px 0 6px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+.tp-checker { background: repeating-conic-gradient(#F1F5F9 0% 25%, #fff 0% 50%) 50% / 12px 12px; }
+.tp-sample-text { display: block; max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; line-height: 1.25; }
+.tp-fam { display: flex; flex-direction: column; min-width: 0; }
+.tp-fam-name { font-weight: 650; }
+.tp-fam-stack { color: var(--muted); font-size: 10.5px; line-height: 1.3; }
+.lp-row.tp-color-row { padding-right: 0; }
+.tp-color { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.tp-swatch { flex: none; width: 18px; height: 18px; border-radius: 5px; border: 1px solid rgba(15,23,42,.25); background: linear-gradient(var(--sw), var(--sw)), repeating-conic-gradient(#CBD5E1 0% 25%, #fff 0% 50%) 50% / 8px 8px; box-shadow: inset 0 0 0 1px rgba(255,255,255,.5); }
+.tp-swatch:hover { outline: 2px solid var(--accent); outline-offset: 1px; }
+.tp-swatch.ok { outline: 2px solid var(--ok); outline-offset: 1px; }
+.tp-hex { flex: 1 1 auto; min-width: 0; font: 600 11.5px/1.4 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; word-break: normal; overflow-wrap: normal; white-space: nowrap; }
+.tp-chips { flex: none; display: inline-flex; gap: 3px; }
+.tp-chipbtn { height: 20px; padding: 0 6px; border-radius: 6px; border: 1px solid var(--line); color: #1e293b; font-weight: 700; font-size: 10px; letter-spacing: .03em; }
+.tp-chipbtn:hover { background: var(--soft); color: var(--accent); border-color: #BFDBFE; }
+.tp-chipbtn.ok { color: var(--ok); border-color: var(--ok); }
+.tp-swatch:focus-visible, .tp-chipbtn:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.tp-contrast { display: inline-flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.tp-badge { padding: 0 7px; border-radius: 999px; font-size: 10.5px; font-weight: 700; line-height: 18px; }
+.tp-badge.good { background: #DCFCE7; color: #166534; }
+.tp-badge.bad { background: #FEE2E2; color: #991B1B; }
+
+/* gradients (background or gradient text): shown as the real gradient, with copy buttons */
+.tp-grad { display: flex; flex-direction: column; gap: 5px; min-width: 0; }
+.tp-gradbar { height: 22px; border-radius: 6px; border: 1px solid rgba(15,23,42,.2); }
+.tp-gradcss { font: 500 10.5px/1.35 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; color: #334155; word-break: break-all; overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+.tp-gradacts { display: flex; align-items: center; gap: 5px; flex-wrap: wrap; }
+.tp-stops { display: inline-flex; gap: 4px; margin-left: auto; }
+.tp-copybtn { display: inline-flex; align-items: center; gap: 5px; height: 22px; padding: 0 8px; border-radius: 6px; border: 1px solid var(--line); color: #1e293b; font-weight: 600; font-size: 10.5px; }
+.tp-copybtn:hover { background: var(--soft); color: var(--accent); border-color: #BFDBFE; }
+.tp-copybtn.ok { color: var(--ok); border-color: var(--ok); }

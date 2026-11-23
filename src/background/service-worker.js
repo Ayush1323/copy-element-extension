@@ -5,21 +5,6 @@ import { STORAGE_KEYS } from '../shared/constants.js';
 
 const CONTENT_FILE = 'content/index.js';
 
-async function isInjected(tabId) {
-  try {
-    const res = await chrome.tabs.sendMessage(tabId, { type: MSG.PING });
-    return !!(res && res.ok);
-  } catch (_) {
-    return false;
-  }
-}
-
-/** Inject the content script into every accessible frame of the tab (idempotent). */
-export async function ensureInjected(tabId) {
-  if (await isInjected(tabId)) return;
-  await chrome.scripting.executeScript({ target: { tabId, allFrames: true }, files: [CONTENT_FILE] });
-}
-
 async function setBadge(tabId, mode) {
   try {
     await chrome.action.setBadgeText({ tabId, text: mode ? 'ON' : '' });
@@ -27,19 +12,43 @@ async function setBadge(tabId, mode) {
   } catch (_) { /* tab gone */ }
 }
 
-/** Activate (or toggle off) a mode on a tab. Returns { ok, error? }. */
+/** Latest activation per tab, so a slow follow-up for the sub-frames never overrides a newer toggle. */
+const frameSync = new Map();
+
+/**
+ * Everything below the top frame (iframes, ads, embeds) is handled AFTER the top frame is already working:
+ * a page with dozens of frames must never delay the picker for the part the user is looking at.
+ */
+async function syncFrames(tabId, mode) {
+  const n = (frameSync.get(tabId) || 0) + 1;
+  frameSync.set(tabId, n);
+  try {
+    if (mode) await chrome.scripting.executeScript({ target: { tabId, allFrames: true }, files: [CONTENT_FILE] }); // idempotent
+    if (frameSync.get(tabId) !== n) return;
+    await chrome.tabs.sendMessage(tabId, { type: MSG.SET_MODE, mode, toggle: false, broadcast: false });
+  } catch (_) { /* frames that cannot be scripted are simply left out */ }
+}
+
+/** Activate (or toggle off) a mode on a tab. Returns { ok, error? } as soon as the top frame is running. */
 export async function activate(tabId, mode, { toggle = true } = {}) {
   try {
     const tab = await chrome.tabs.get(tabId);
     if (isRestrictedUrl(tab.url || tab.pendingUrl)) {
       return { ok: false, error: 'Chrome does not allow extensions to run on this page.' };
     }
-    await ensureInjected(tabId);
-    await chrome.tabs.sendMessage(tabId, { type: MSG.SET_MODE, mode, toggle, broadcast: false });
-    let state = null;
-    try { state = await chrome.tabs.sendMessage(tabId, { type: MSG.GET_STATE }); } catch (_) { /* noop */ }
-    await setBadge(tabId, state ? state.mode : mode);
-    return { ok: true, mode: state ? state.mode : mode };
+    const msg = { type: MSG.SET_MODE, mode, toggle, broadcast: false };
+    let res;
+    try {
+      res = await chrome.tabs.sendMessage(tabId, msg, { frameId: 0 }); // already injected: one round trip
+    } catch (_) {
+      await chrome.scripting.executeScript({ target: { tabId, frameIds: [0] }, files: [CONTENT_FILE] });
+      res = await chrome.tabs.sendMessage(tabId, msg, { frameId: 0 });
+    }
+    if (res && res.ok === false) throw new Error(res.error || 'Could not start on this page.');
+    const active = res && 'mode' in res ? res.mode : mode;
+    await setBadge(tabId, active);
+    syncFrames(tabId, active); // deliberately not awaited
+    return { ok: true, mode: active };
   } catch (e) {
     return { ok: false, error: friendly(e) };
   }
@@ -74,16 +83,19 @@ const PREVIEW_RULE = {
   condition: { initiatorDomains: [chrome.runtime.id], resourceTypes: ['sub_frame'], regexFilter: '^https?://' },
 };
 
-export async function syncPreviewRule() {
+export async function syncPreviewRule({ force = false } = {}) {
   try {
     const res = await chrome.storage.local.get(STORAGE_KEYS.SETTINGS);
     const enabled = !!(res[STORAGE_KEYS.SETTINGS] && res[STORAGE_KEYS.SETTINGS].linkPreviewAnySite);
     let allowed = false;
     try { allowed = await chrome.permissions.contains({ origins: ['<all_urls>'] }); } catch (_) { /* noop */ }
-    await chrome.declarativeNetRequest.updateDynamicRules({
-      removeRuleIds: [PREVIEW_RULE_ID],
-      addRules: enabled && allowed ? [PREVIEW_RULE] : [],
-    });
+    const want = enabled && allowed;
+    // every service-worker start runs this: skip the rule rewrite when nothing changed
+    if (!force) {
+      const have = (await chrome.declarativeNetRequest.getDynamicRules()).some((r) => r.id === PREVIEW_RULE_ID);
+      if (have === want) return;
+    }
+    await chrome.declarativeNetRequest.updateDynamicRules({ removeRuleIds: [PREVIEW_RULE_ID], addRules: want ? [PREVIEW_RULE] : [] });
   } catch (_) { /* DNR unavailable: previews fall back to plain frames */ }
 }
 
@@ -96,10 +108,10 @@ async function previewToken() {
 }
 
 syncPreviewRule();
-chrome.runtime.onInstalled.addListener(syncPreviewRule);
-chrome.runtime.onStartup.addListener(syncPreviewRule);
-chrome.permissions.onAdded.addListener(syncPreviewRule);
-chrome.permissions.onRemoved.addListener(syncPreviewRule);
+chrome.runtime.onInstalled.addListener(() => syncPreviewRule({ force: true }));
+chrome.runtime.onStartup.addListener(() => syncPreviewRule());
+chrome.permissions.onAdded.addListener(() => syncPreviewRule());
+chrome.permissions.onRemoved.addListener(() => syncPreviewRule());
 chrome.storage.onChanged.addListener((changes, area) => { if (area === 'local' && changes[STORAGE_KEYS.SETTINGS]) syncPreviewRule(); });
 
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {

@@ -39,8 +39,9 @@ export function createShotSession({ ui, toast, onExit }) {
   async function start() {
     phase = 'capturing';
     try {
-      prefs = await getShotPrefs();
+      const prefsReady = getShotPrefs(); // read while the page is being captured
       frame = await captureVisible({ hide: hideUi, show: showUi });
+      prefs = await prefsReady;
     } catch (e) {
       showUi();
       if (!destroyed) { fail((e && e.message) || 'Could not capture this page.'); onExit(); }

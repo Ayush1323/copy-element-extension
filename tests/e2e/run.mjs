@@ -267,7 +267,7 @@ await t('dynamically rendered link is detected', async () => {
 });
 await t('link inside an open Shadow DOM is detected', async () => {
   const c = await page.evaluate(() => { const a = document.getElementById('shadow-host').shadowRoot.getElementById('sh-inner'); a.scrollIntoView({ block: 'center' }); const r = a.getBoundingClientRect(); return { x: r.x + r.width / 2, y: r.y + r.height / 2 }; });
-  await page.mouse.move(1100, 700); await sleep(380);
+  await page.mouse.move(1100, 700); await sleep(550);
   await page.mouse.move(c.x, c.y, { steps: 3 }); await sleep(450);
   const d = await lp();
   ok(d && val(d, 'href').endsWith('/in-shadow'), JSON.stringify(d));
@@ -488,6 +488,7 @@ await t('Inspect Images starts with no side list and nothing highlighted', async
   ok(!(await outlineVisible()), 'no outline yet');
 });
 await t('hovering an <img> highlights it (IMAGE) and shows DevTools-style info', async () => {
+  await page.mouse.move(1200, 800); await sleep(300); // start away from the heading above the banner (its typography panel would sit in the way)
   const c = await center(page, '#banner');
   await page.mouse.move(c.x, c.y, { steps: 3 }); await sleep(450);
   ok(await outlineVisible(), 'outline visible');
@@ -596,12 +597,183 @@ await page.close();
 page = await openPage(`${base}/images.html`);
 await t('Escape exits Inspect Images and removes all overlays', async () => {
   await activate(page, 'images');
+  await page.mouse.move(1200, 800); await sleep(300);
   const c = await center(page, '#banner');
   await page.mouse.move(c.x, c.y, { steps: 3 }); await sleep(400);
   ok(await tip());
   await page.keyboard.press('Escape'); await sleep(300);
   ok(!(await hostExists(page)), 'host removed');
 });
+await page.close();
+
+console.log('\nTest T — Inspect text: font, size, weight, colours (copyable), contrast');
+await resetStorage();
+page = await openPage(`${base}/typography.html`);
+{
+  /** a point exactly on the glyphs of the first text node of `sel` */
+  const textPt = (sel) => page.evaluate((s) => {
+    const el = document.querySelector(s); el.scrollIntoView({ block: 'center' });
+    const w = document.createTreeWalker(el, 4); const n = w.nextNode();
+    const r = document.createRange(); r.selectNodeContents(n);
+    const b = r.getClientRects()[0];
+    return { x: b.left + Math.min(b.width / 2, 60), y: b.top + b.height / 2, left: b.left, bottom: b.bottom };
+  }, sel);
+  const panel = async () => {
+    const h = await ui(page, '.textp');
+    if (!h) return null;
+    return h.evaluate((e) => {
+      if (e.hidden) return null;
+      const rows = {};
+      for (const r of e.querySelectorAll('.lp-row')) rows[r.querySelector('dt').textContent] = r.querySelector('dd').textContent.replace(/\s+/g, ' ').trim();
+      const b = e.getBoundingClientRect();
+      return { rows, tag: e.querySelector('.tp-tag').textContent, box: { x: b.x, y: b.y, w: b.width, h: b.height }, sample: e.querySelector('.tp-sample-text').textContent };
+    });
+  };
+  const toastText = () => page.evaluate(() => [...document.querySelector('linklens-root').shadowRoot.querySelectorAll('.toast')].map((x) => x.textContent).join('|'));
+  const hoverText = async (sel) => { const p = await textPt(sel); await page.mouse.move(p.x, p.y, { steps: 4 }); await sleep(350); return p; };
+  const clickIn = async (sel, nth = 0) => {
+    const hs = await page.$$(`pierce/.textp ${sel}`);
+    const b = await hs[nth].boundingBox();
+    await page.mouse.move(b.x + b.width / 2, b.y + b.height / 2, { steps: 2 });
+    await page.mouse.click(b.x + b.width / 2, b.y + b.height / 2);
+    await sleep(250);
+  };
+
+  await t('Inspect starts quiet: no typography panel until the pointer is on text', async () => {
+    const r = await activate(page, 'images');
+    ok(r && r.ok, JSON.stringify(r));
+    eq(await panel(), null);
+  });
+  await t('T1. hovering a heading shows font, size, weight, style, line height, spacing, colour and contrast', async () => {
+    await hoverText('#head');
+    const d = await panel();
+    ok(d, 'panel visible');
+    eq(d.tag, '<h1>');
+    eq(d.rows.Font.startsWith('Georgia'), true, d.rows.Font);
+    eq(d.rows.Size, '32px · 2rem');
+    eq(d.rows.Weight, '700 · Bold');
+    eq(d.rows.Style, 'Normal');
+    eq(d.rows['Line height'], '40px · 1.25');
+    ok(/^#1D4ED8/.test(d.rows.Color), d.rows.Color);
+    ok(/^#FFFFFF/.test(d.rows.Background), d.rows.Background);
+    ok(/: 1/.test(d.rows.Contrast) && /WCAG AA/.test(d.rows.Contrast), d.rows.Contrast);
+    eq(d.sample, 'Quarterly design review');
+    ok(await outlineVisible(), 'the text is outlined');
+    ok(/HEADING/.test(await chipText()), 'outline label: ' + await chipText());
+  });
+  await t('T2. the panel stays fully on screen and never sits on the pointer', async () => {
+    const p = await hoverText('#head');
+    const d = await panel();
+    ok(d.box.x >= 0 && d.box.y >= 0 && d.box.x + d.box.w <= 1280 && d.box.y + d.box.h <= 900, JSON.stringify(d.box));
+    ok(!(p.x > d.box.x && p.x < d.box.x + d.box.w && p.y > d.box.y && p.y < d.box.y + d.box.h), 'pointer is not under the panel');
+  });
+  await t('T3. other text updates the same panel: body copy, low-contrast grey, light-on-dark, light weight in rem', async () => {
+    await hoverText('#body');
+    let d = await panel();
+    ok(d.rows.Font.startsWith('Helvetica Neue'), d.rows.Font);
+    eq(d.rows.Size, '16px · 1rem');
+    eq(d.rows.Weight, '400 · Regular');
+    eq(d.rows.Spacing, '0.2px');
+    ok(/^#374151/.test(d.rows.Color), d.rows.Color);
+    await hoverText('#grey');
+    d = await panel();
+    ok(/^#777777/.test(d.rows.Color), d.rows.Color);
+    ok(/Low contrast/.test(d.rows.Contrast), 'grey #777 on white fails WCAG AA: ' + d.rows.Contrast);
+    await hoverText('#light');
+    d = await panel();
+    ok(/^#0F172A/.test(d.rows.Background), 'the dark card behind the text: ' + d.rows.Background);
+    ok(/^#F8FAFC/.test(d.rows.Color), d.rows.Color);
+    eq(d.rows.Style, 'Italic');
+    eq(d.rows.Weight, '500 · Medium');
+    eq(d.rows.Transform, 'uppercase');
+    ok(/underline/.test(d.rows.Decoration), d.rows.Decoration);
+    await hoverText('#sizes');
+    d = await panel();
+    eq(d.rows.Size, '24px · 1.5rem');
+    eq(d.rows.Weight, '300 · Light');
+    eq(d.rows['Line height'].startsWith('normal'), true, d.rows['Line height']);
+  });
+  await t('T4. text over a gradient background: the gradient itself is shown and copyable, with its colour stops; no made-up contrast', async () => {
+    await hoverText('#hero p');
+    const d = await panel();
+    ok(d.rows.Background.includes('linear-gradient(90deg, rgb(37, 99, 235), rgb(147, 51, 234))'), d.rows.Background);
+    eq(d.rows.Contrast, undefined);
+    ok(/^#FFFFFF/.test(d.rows.Color), d.rows.Color);
+    const painted = await (await ui(page, '.textp .tp-gradbar')).evaluate((e) => getComputedStyle(e).backgroundImage);
+    ok(/linear-gradient/.test(painted), 'the bar is painted with the gradient: ' + painted);
+    await clickIn('[data-copy="bg-gradient"]');
+    eq(await clip(page), 'linear-gradient(90deg, rgb(37, 99, 235), rgb(147, 51, 234))');
+    await clickIn('[data-copy="bg-stop-0"]'); eq(await clip(page), '#2563EB', 'first stop');
+    await clickIn('[data-copy="bg-stop-1"]'); eq(await clip(page), '#9333EA', 'second stop');
+  });
+  await t('T4b. gradient TEXT shows its gradient as the colour (copyable), and Alt+C copies it', async () => {
+    await page.mouse.move(1200, 800, { steps: 3 }); await sleep(700);
+    await hoverText('#gtext');
+    const d = await panel();
+    ok(d.rows.Color.includes('linear-gradient(90deg, rgb(244, 63, 94), rgb(245, 158, 11))'), d.rows.Color);
+    ok(/^#FFFFFF/.test(d.rows.Background), 'the page behind the text, not its own gradient: ' + d.rows.Background);
+    eq(d.rows.Contrast, undefined);
+    await page.keyboard.down('Alt'); await page.keyboard.press('KeyC'); await page.keyboard.up('Alt'); await sleep(300);
+    eq(await clip(page), 'linear-gradient(90deg, rgb(244, 63, 94), rgb(245, 158, 11))');
+    await clickIn('[data-copy="color-stop-1"]'); eq(await clip(page), '#F59E0B');
+    ok(/background-clip: text/.test((await (async () => { await clickIn('[data-copy="css"]'); return clip(page); })())), 'CSS block carries the gradient-text recipe');
+  });
+  await t('T4c. the panel never flashes in the top-left corner before moving into place', async () => {
+    await page.mouse.move(1200, 800, { steps: 3 }); await sleep(700);
+    await page.evaluate(() => {
+      window.__flash = []; const root = document.querySelector('linklens-root').shadowRoot;
+      const tick = () => { for (const e of root.querySelectorAll('.textp, .linkp, .imgtip')) { if (e.hidden) continue; const r = e.getBoundingClientRect(); if (r.width > 0) window.__flash.push([Math.round(r.x), Math.round(r.y)]); } window.__raf = requestAnimationFrame(tick); };
+      tick();
+    });
+    await hoverText('#head'); await sleep(300);
+    const samples = await page.evaluate(() => { cancelAnimationFrame(window.__raf); return window.__flash; });
+    ok(samples.length > 3, 'sampled while visible: ' + samples.length);
+    ok(samples.every(([x, y]) => !(x < 40 && y < 40)), 'every frame of the panel is at its final place: ' + JSON.stringify(samples.slice(0, 6)));
+  });
+  await t('T5. the pointer can travel into the panel and it stays, then HEX / RGB / HSL buttons copy the colour', async () => {
+    await hoverText('#head');
+    const b = (await panel()).box;
+    await page.mouse.move(b.x + b.w / 2, b.y + 14, { steps: 8 }); await sleep(700); // longer than the hide delay
+    ok(await panel(), 'panel still there with the pointer inside it');
+    const chips = await page.$$('pierce/.textp .tp-color-row .tp-chipbtn');
+    eq(chips.length, 6, 'HEX RGB HSL for the text colour and for the background');
+    const press = async (i) => { const bb = await chips[i].boundingBox(); await page.mouse.move(bb.x + bb.width / 2, bb.y + bb.height / 2, { steps: 2 }); await page.mouse.click(bb.x + bb.width / 2, bb.y + bb.height / 2); await sleep(300); };
+    await press(0); eq(await clip(page), '#1D4ED8', 'HEX');
+    ok(/Copied #1D4ED8/.test(await toastText()), await toastText());
+    await press(1); eq(await clip(page), 'rgb(29, 78, 216)', 'RGB');
+    await press(2); eq(await clip(page), 'hsl(224, 76%, 48%)', 'HSL');
+    await press(3); eq(await clip(page), '#FFFFFF', 'background HEX');
+    await press(4); eq(await clip(page), 'rgb(255, 255, 255)', 'background RGB');
+    ok(await panel(), 'still open after copying');
+  });
+  await t('T6. clicking the colour swatch copies the HEX; the font name and the CSS can be copied too', async () => {
+    await clickIn('.tp-swatch', 0);
+    eq(await clip(page), '#1D4ED8');
+    await clickIn('[data-copy="family"]');
+    eq(await clip(page), 'Georgia');
+    await clickIn('[data-copy="css"]');
+    const css = await clip(page);
+    ok(/font-size: 32px;/.test(css) && /font-weight: 700;/.test(css) && /color: #1D4ED8;/.test(css) && /font-family: .*Georgia/.test(css), css);
+  });
+  await t('T7. Alt+C over text copies its colour as HEX', async () => {
+    await page.mouse.move(5, 5, { steps: 2 }); await sleep(700);
+    await hoverText('#grey');
+    await page.evaluate(() => navigator.clipboard.writeText('x'));
+    await page.keyboard.down('Alt'); await page.keyboard.press('KeyC'); await page.keyboard.up('Alt'); await sleep(300);
+    eq(await clip(page), '#777777');
+  });
+  await t('T8. leaving the text hides the panel and the outline', async () => {
+    await page.mouse.move(1200, 60, { steps: 6 }); await sleep(800);
+    eq(await panel(), null, 'panel gone');
+    ok(!(await outlineVisible()), 'outline gone');
+  });
+  await t('T9. Escape removes everything', async () => {
+    await hoverText('#head');
+    ok(await panel());
+    await page.keyboard.press('Escape'); await sleep(300);
+    ok(!(await hostExists(page)), 'host removed');
+  });
+}
 await page.close();
 
 console.log('\nTest B/C — card & section modes, rich format, preview, history, settings');
