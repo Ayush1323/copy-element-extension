@@ -8,7 +8,7 @@ A Manifest V3 Chrome extension for designers, developers and content teams. Hove
 see it highlighted, and copy a heading, paragraph, tag, whole **card** or whole **section** straight into
 Figma, Google Docs or any text editor — without opening DevTools.
 
-Everything runs locally in the browser: no backend, no analytics, no external APIs.
+Everything runs locally in the browser: no backend, no analytics, no external APIs. The only exception is the screenshot **Link** button, which uploads that one image to the developer's share service when you press it (see below).
 
 ## Features
 
@@ -21,7 +21,7 @@ Everything runs locally in the browser: no backend, no analytics, no external AP
 | **Force Copy** | Clickable / stretched-link cards never navigate while a picker is active; page click handlers are suppressed; normal behaviour is restored on exit. |
 | **Link attribute preview** | In Element Picker, hovering any link (including nested elements, dynamic links and open Shadow DOM) shows its text, resolved `href`, `target`, every `rel` value, `title`, `download` and `aria-label` in a floating panel, with copy buttons for URL, rel and HTML. Missing attributes read *Not specified*. After the pointer rests on a link for a moment, a small live preview of the destination page appears in the panel (toggle in Settings → *Link preview*); click it or *Open in new tab* to open the link. Sites that forbid embedding (X-Frame-Options) show an *Enable full previews* hint; turning on *Settings → Preview sites that block embedding* (optional all-sites permission, asked at that moment) renders them anyway by relaxing frame-blocking headers only for LinkLens's own preview frame. Links that look like actions (log out, delete…) are never loaded. |
 | **Inspect Images & Text** | Hover any `<img>` or CSS background image: it is outlined and a DevTools-style tooltip shows rendered size & aspect ratio, intrinsic size & ratio, file size and current source. Hover any **text** and a panel shows its font family (and fallback stack), size (px and rem), weight (number and name), style, line height, letter spacing, **text colour** and the **background colour behind it**, WCAG contrast, alignment, decoration and transform, plus a live sample in the same font. Every colour can be copied as **HEX, RGB or HSL** (buttons, or click the swatch); the font name and a ready-to-paste CSS block copy too. `Alt+C` copies the hovered text colour (or the image URL). Values come straight from the browser's computed style; over an image or gradient the background is reported as such instead of inventing a colour. The page stays fully clickable. |
-| **Screenshot** | Capture → select → edit → copy / download, **all on the page you are looking at** (no new tab, window or editor page). Select an area (move / resize it), or take the visible screen or a stitched full page; annotate with pencil, arrow, line, rectangle, ellipse, highlighter, text, numbered steps, blur / pixelate and eraser; select, move, resize and delete annotations; undo / redo; copy to the clipboard, download a PNG or save as PNG / JPEG. Shortcut `Alt+Shift+S`. |
+| **Screenshot** | Capture → select → edit → copy / download, **all on the page you are looking at** (no new tab, window or editor page). Select an area (move / resize it), or take the visible screen or a stitched full page; annotate with pencil, arrow, line, rectangle, ellipse, highlighter, text, numbered steps, blur / pixelate and eraser; select, move, resize and delete annotations; undo / redo; copy to the clipboard, download a PNG, save as PNG / JPEG or get a shareable link. Shortcut `Alt+Shift+S`. |
 | **Floating toolbar** | Compact handle with the element type; hover it for *Copy Text · Copy Element · Copy Card · Copy Section · Preview*. Always clamped inside the viewport. |
 | **Preview panel** | Structured preview with character/block counts, per-part copy, *Copy All / Plain / Rich / Copy Again*. |
 | **Clipboard** | Plain text or sanitized Rich HTML (`text/html` + `text/plain` in one `ClipboardItem`), with `writeText` and `execCommand` fallbacks. |
@@ -125,7 +125,18 @@ Open it from the popup (**Screenshot**) or press `Alt+Shift+S` (rebind at `chrom
 3. **Edit** – the cropped screenshot becomes an editor right where you selected, with a floating tool column, an options bar
    (colour, thickness, text size / background, blur mode) and an action bar. All three can be dragged by their grip.
 4. **Finish** – *Copy* (`Ctrl/⌘+C`), *Download* (PNG with a date/time name, `Ctrl/⌘+D`), *Save* (choose the name and PNG / JPEG,
-   optionally the folder; `Ctrl/⌘+S`) or *Close* (`Esc`). The page underneath is left exactly as it was.
+   optionally the folder; `Ctrl/⌘+S`), *Link* (see below) or *Close* (`Esc`). The page underneath is left exactly as it was.
+
+### Shareable link (Lightshot-style)
+
+Press **Link** and the finished screenshot uploads at once: the button shows *Uploading…*, then a small panel appears in the same
+editor with the link (already copied: *Screenshot link copied!*) and **Copy Link · Open Link · Download · Close**. If the upload
+fails you get the reason and **Retry**; the screenshot and your annotations are never lost. Nothing is uploaded unless you press
+**Link**, and anyone with the link can view the image (the panel says so). Links are deleted from the server after 30 days; the backend runs free on Cloudflare Workers KV (no card).
+
+Users configure nothing. The upload address is one developer-set constant fixed at build time
+(default in `scripts/build.mjs`, override with `LINKLENS_SHARE_API`), served by the Cloudflare Worker in [`server/share-worker`](server/share-worker) (deploy once; free, no card;
+guide inside).
 
 | Tool | Key | | Tool | Key |
 |---|---|---|---|---|
@@ -155,7 +166,7 @@ labelled as such. Very tall pages (> 16 000 px at device resolution) are saved a
 
 ## Privacy
 
-All processing is local. No servers, analytics, tracking scripts or paid/AI APIs. History lives in
+All processing is local. No analytics, tracking scripts or paid/AI APIs, and no LinkLens servers. The one thing that can leave your device is a screenshot you upload by pressing **Link**: it is stored for 30 days on the project's own share service and anyone with its link can view it. History lives in
 `chrome.storage.local` and can be disabled or cleared in Settings. Copied HTML is passed through an allow-list
 sanitizer (no scripts, handlers, inline styles or `javascript:`/`data:` links).
 

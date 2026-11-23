@@ -2,6 +2,7 @@ import { MSG } from '../shared/message-types.js';
 import { MODES } from '../shared/constants.js';
 import { isRestrictedUrl } from '../shared/helpers.js';
 import { STORAGE_KEYS } from '../shared/constants.js';
+import { shareBase, sameOriginLink, MAX_UPLOAD_BYTES, UPLOAD_TIMEOUT_MS } from '../shared/share.js';
 
 const CONTENT_FILE = 'content/index.js';
 
@@ -99,6 +100,32 @@ export async function syncPreviewRule({ force = false } = {}) {
   } catch (_) { /* DNR unavailable: previews fall back to plain frames */ }
 }
 
+/**
+ * Uploads the screenshot to the one built-in share API. Only called after the user pressed Link.
+ * Nothing is logged or stored about the image; the API address is a build-time constant, there is no secret here.
+ */
+async function uploadShot(msg) {
+  const base = shareBase();
+  if (!base) return { ok: false, code: 'not_configured', error: 'Link sharing is not available in this build yet.' };
+  if (typeof msg.dataUrl !== 'string' || !/^data:image\/(png|jpeg);base64,/.test(msg.dataUrl)) return { ok: false, error: 'Invalid image.' };
+  const blob = await (await fetch(msg.dataUrl)).blob();
+  if (blob.size > MAX_UPLOAD_BYTES * 1.5) return { ok: false, error: 'The image is too large to upload.' };
+  const ctl = new AbortController();
+  const timer = setTimeout(() => ctl.abort(), UPLOAD_TIMEOUT_MS);
+  let res;
+  try { res = await fetch(base + '/upload', { method: 'POST', headers: { 'Content-Type': blob.type }, body: blob, credentials: 'omit', cache: 'no-store', signal: ctl.signal }); }
+  catch (e) { return { ok: false, error: e && e.name === 'AbortError' ? 'The upload took too long. Check your connection and try again.' : 'Could not reach the sharing service. Check your connection and try again.' }; }
+  finally { clearTimeout(timer); }
+  if (res.status === 429) return { ok: false, error: 'Too many uploads in a short time. Wait a minute and try again.' };
+  if (res.status === 413) return { ok: false, error: 'The sharing service says the image is too large.' };
+  if (!res.ok) return { ok: false, error: `The sharing service had a problem (${res.status}). Try again in a moment.` };
+  let data = null;
+  try { data = await res.json(); } catch (_) { /* handled below */ }
+  const url = data && sameOriginLink(data.url, base);
+  if (!url) return { ok: false, error: 'The sharing service sent an unexpected answer.' };
+  return { ok: true, url, expiresAt: data.expiresAt || null };
+}
+
 async function previewToken() {
   const got = await chrome.storage.session.get('miPreviewToken');
   if (got.miPreviewToken) return got.miPreviewToken;
@@ -134,6 +161,10 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       (dataUrl) => sendResponse({ ok: true, dataUrl }),
       (e) => sendResponse({ ok: false, error: String((e && e.message) || e) }),
     );
+    return true;
+  }
+  if (msg.type === MSG.UPLOAD_SHOT && sender.tab) {
+    uploadShot(msg).then(sendResponse, (e) => sendResponse({ ok: false, error: String((e && e.message) || e) }));
     return true;
   }
   if (msg.type === MSG.OPEN_OPTIONS) {

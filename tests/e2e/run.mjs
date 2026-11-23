@@ -12,6 +12,35 @@ const tmp = join(root, 'tests/e2e/.tmp');
 const CHROME = process.env.CHROME_PATH || '/usr/bin/google-chrome';
 const LIVE = !!process.env.LIVE;
 
+// --- mock of the production share API (the real one is server/share-worker, unit-tested separately).
+const share = { uploads: [], stored: new Map(), mode: 'ok', delay: 0 };
+const shareSrv = http.createServer((req, res) => {
+  res.setHeader('Access-Control-Allow-Origin', '*'); res.setHeader('Access-Control-Allow-Headers', 'Content-Type'); res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+  if (req.method === 'OPTIONS') { res.statusCode = 204; return res.end(); }
+  if (req.method === 'POST' && req.url === '/upload') {
+    const chunks = [];
+    req.on('data', (c) => chunks.push(c));
+    req.on('end', () => setTimeout(() => {
+      const body = Buffer.concat(chunks);
+      share.uploads.push({ type: req.headers['content-type'], bytes: body.length, auth: req.headers.authorization || '', cookie: req.headers.cookie || '', body });
+      if (share.mode === 'drop') return req.socket.destroy();
+      if (share.mode === 'fail500') { res.statusCode = 500; return res.end('{}'); }
+      if (share.mode === 'limit') { res.statusCode = 429; return res.end('{}'); }
+      const id = 'Id' + String(share.uploads.length).padStart(20, 'x');
+      share.stored.set(id, body);
+      res.setHeader('content-type', 'application/json');
+      const host = share.mode === 'offsite' ? 'http://evil.example' : SHARE_BASE;
+      res.end(JSON.stringify({ url: `${host}/i/${id}.png`, expiresAt: Date.now() + 30 * 86400000 }));
+    }, share.delay));
+    return;
+  }
+  const m = /^\/i\/(\w+)\.png$/.exec(req.url);
+  if (m && share.stored.has(m[1])) { res.setHeader('content-type', 'image/png'); return res.end(share.stored.get(m[1])); }
+  res.statusCode = 404; res.end('nope');
+});
+await new Promise((r) => shareSrv.listen(0, r));
+const SHARE_BASE = `http://localhost:${shareSrv.address().port}`;
+
 // --- test copy of the extension: same code, plus host permission for the local fixture server
 rmSync(tmp, { recursive: true, force: true });
 mkdirSync(tmp, { recursive: true });
@@ -24,6 +53,12 @@ const cs = join(tmp, 'ext/content/index.js');
 const bundle = readFileSync(cs, 'utf8');
 if (!/mode:"closed"/.test(bundle)) throw new Error('closed shadow root marker not found in bundle');
 writeFileSync(cs, bundle.replace('mode:"closed"', 'mode:"open"'));
+// the production build carries the real upload address; the tests point it at a mock server instead
+const swFile = join(tmp, 'ext/background/service-worker.js');
+const swCode = readFileSync(swFile, 'utf8');
+const SHARE_BUILT_IN = ['https://linklens-share.ayush-patel-6d2.workers.dev', 'https://linklens-share.invalid'].find((u) => swCode.includes(u));
+if (!SHARE_BUILT_IN) throw new Error('built-in share API address not found in the service worker bundle');
+writeFileSync(swFile, swCode.replaceAll(SHARE_BUILT_IN, SHARE_BASE));
 
 const fixtures = join(root, 'tests/fixtures');
 const hits = [];
@@ -1231,6 +1266,150 @@ await t('22. restricted pages are refused with a clear message', async () => {
 await page.close();
 await helper.evaluate(async (snap) => { await chrome.storage.local.clear(); await chrome.storage.local.set(snap); }, shotSnapshot);
 
+console.log('\nTest U — Screenshot Link: one click uploads the edited screenshot and copies a share link (same page, no setup)');
+{
+  const uSnapshot = await helper.evaluate(() => chrome.storage.local.get(null));
+  await helper.evaluate(() => chrome.storage.local.remove(['mi_shot_prefs']));
+  const upage = await openPage(`${base}/shot.html`, { stubExternal: false });
+  const upagesBefore = (await browser.pages()).length;
+  const ush = (sel) => ui(upage, sel);
+  const uclick = async (selector) => { const b = await ush(selector); const bb = await b.boundingBox(); await upage.mouse.click(bb.x + bb.width / 2, bb.y + bb.height / 2); await sleep(120); };
+  const toastText = () => upage.evaluate(() => Array.from(document.querySelector('linklens-root').shadowRoot.querySelectorAll('.toast')).map((e) => e.textContent).join(' | '));
+  const popText = async () => { const p = await ush('.ss-pop'); return p ? p.evaluate((e) => e.textContent) : null; };
+  const waitPop = async (re, n = 60) => { for (let k = 0; k < n; k++) { const tx = await popText(); if (tx && re.test(tx)) return tx; await sleep(100); } return await popText(); };
+  const linkLabel = async () => (await ush('.ss-actions [data-act="share"]')).evaluate((e) => ({ text: e.textContent.trim(), disabled: e.disabled, spin: !!e.querySelector('.ss-spin') }));
+  const imgOf = (u) => helper.evaluate(async (url) => { const bm = await createImageBitmap(await (await fetch(url)).blob()); const c = document.createElement('canvas'); c.width = bm.width; c.height = bm.height; const x = c.getContext('2d'); x.drawImage(bm, 0, 0); return { w: bm.width, h: bm.height, px: Array.from(x.getImageData(0, 0, bm.width, bm.height).data) }; }, u);
+
+  await upage.mouse.move(5, 5);
+  await activate(upage, 'screenshot'); await sleep(900);
+  await upage.mouse.move(120, 120); await upage.mouse.down(); await upage.mouse.move(520, 300, { steps: 6 }); await upage.mouse.up();
+  await upage.keyboard.press('Enter'); await sleep(500);
+  // edit first: a thick red rectangle, so we can prove the EDITED image is what gets uploaded
+  await uclick('[data-tool="rect"]');
+  const sb = await (await ush('.ss-over')).boundingBox();
+  await upage.mouse.move(sb.x + 40, sb.y + 30); await upage.mouse.down(); await upage.mouse.move(sb.x + 300, sb.y + 140, { steps: 8 }); await upage.mouse.up(); await sleep(150);
+  eq(Number(await (await ush('.ss-stage')).evaluate((e) => e.dataset.count)), 1, 'an annotation exists before uploading');
+
+  await t('U1. nothing is uploaded while capturing or editing, and there is no server form anywhere', async () => {
+    eq(share.uploads.length, 0, 'no upload without pressing Link');
+    ok(await ush('.ss-actions [data-act="share"]'), 'Link button');
+    eq((await linkLabel()).text, 'Link', 'Ready state');
+    ok(!(await ush('.ss-endpoint')) && !(await ush('.ss-token')), 'no address / token fields');
+  });
+  await t('U2. one click uploads at once: Uploading… state with a spinner, the button locked, and a double click does not upload twice', async () => {
+    share.delay = 1200;
+    const b = await (await ush('.ss-actions [data-act="share"]')).boundingBox();
+    await upage.mouse.click(b.x + b.width / 2, b.y + b.height / 2);
+    await upage.mouse.click(b.x + b.width / 2, b.y + b.height / 2);
+    await sleep(350);
+    const st = await linkLabel();
+    ok(/Uploading/.test(st.text) && st.spin && st.disabled, JSON.stringify(st));
+    ok(!(await popText()), 'no form or panel while uploading');
+    await upage.mouse.click(b.x + b.width / 2, b.y + b.height / 2); // a third try while busy
+    await waitPop(/link copied/i, 40);
+    share.delay = 0;
+    eq(share.uploads.length, 1, 'exactly one upload for three clicks');
+    eq((await browser.pages()).length, upagesBefore, 'no new tab');
+    eq((await linkLabel()).text, 'Link', 'back to Ready');
+    ok(!share.uploads[0].auth && !share.uploads[0].cookie, 'no credentials or cookies are sent');
+  });
+  await t('U3. success: the link is copied automatically and shown in a panel with Copy Link / Open Link / Download / Close', async () => {
+    const tx = await popText();
+    ok(/Screenshot link copied!/.test(tx), tx);
+    ok(/Anyone with this link can view this screenshot/.test(tx) && /deleted after 30 days/.test(tx), tx);
+    for (const a of ['Copy Link', 'Open Link', 'Download', 'Close']) ok(tx.includes(a), 'action ' + a);
+    const link = await (await ush('.ss-url')).evaluate((e) => e.value);
+    ok(/^http:\/\/localhost:\d+\/i\/Id\w{20}\.png$/.test(link), link);
+    eq(await clip(upage), link, 'the link is on the clipboard');
+    ok(/Screenshot link copied!/.test(await toastText()), await toastText());
+  });
+  await t('U4. the uploaded file is exactly the EDITED screenshot (same pixels as Copy, annotation included)', async () => {
+    const link = await (await ush('.ss-url')).evaluate((e) => e.value);
+    eq(share.uploads[0].type, 'image/png');
+    const remote = await imgOf(link);
+    ok(Math.abs(remote.w - 400) <= 1 && Math.abs(remote.h - 180) <= 1, `selected size: ${remote.w}x${remote.h}`);
+    let red = 0; for (let i = 0; i < remote.px.length; i += 4) if (Math.abs(remote.px[i] - 239) < 20 && Math.abs(remote.px[i + 1] - 68) < 20 && Math.abs(remote.px[i + 2] - 68) < 20) red++;
+    ok(red > 200, 'the annotation is in the uploaded image (' + red + ' red pixels)');
+    await uclick('.ss-pop [data-p="cancel"]');
+    await uclick('.ss-actions [data-act="copy"]'); await sleep(500);
+    const clipPx = await upage.evaluate(async () => { const it = (await navigator.clipboard.read()).find((i) => i.types.includes('image/png')); const bm = await createImageBitmap(await it.getType('image/png')); const c = document.createElement('canvas'); c.width = bm.width; c.height = bm.height; const x = c.getContext('2d'); x.drawImage(bm, 0, 0); return Array.from(x.getImageData(0, 0, bm.width, bm.height).data); });
+    eq(clipPx.length, remote.px.length, 'same dimensions as the Copy export');
+    let diff = 0; for (let i = 0; i < clipPx.length; i++) if (clipPx[i] !== remote.px[i]) diff++;
+    eq(diff, 0, 'not one value differs from what Copy exports');
+  });
+  await t('U5. every upload gets its own unguessable link, and each link opens its own screenshot', async () => {
+    await uclick('.ss-actions [data-act="share"]');
+    await waitPop(/link copied/i);
+    const l2 = await (await ush('.ss-url')).evaluate((e) => e.value);
+    eq(share.uploads.length, 2);
+    ok(share.stored.size === 2 && l2 !== `${SHARE_BASE}/i/Id${'x'.repeat(19)}1.png`, l2);
+    const got = await helper.evaluate(async (u) => { const r = await fetch(u); return { status: r.status, type: r.headers.get('content-type') }; }, l2);
+    eq(got.status, 200); eq(got.type, 'image/png');
+  });
+  await t('U6. Copy Link copies again; Open Link opens the link in a new tab; Close dismisses the panel', async () => {
+    await upage.evaluate(() => navigator.clipboard.writeText('x'));
+    await uclick('.ss-pop [data-p="primary"]');
+    ok(/\/i\/Id\w+\.png$/.test(await clip(upage)), 'copied again');
+    const link = await (await ush('.ss-url')).evaluate((e) => e.value);
+    const opened = new Promise((r) => browser.once('targetcreated', r));
+    await uclick('.ss-pop [data-p="open"]');
+    const tgt = await Promise.race([opened, sleep(4000).then(() => null)]);
+    ok(tgt, 'a tab opened');
+    await sleep(500);
+    const op = (await browser.pages()).find((p) => p.url() === link);
+    ok(op, 'it shows the shared screenshot: ' + (await browser.pages()).map((p) => p.url()).join(' '));
+    await op.close(); await upage.bringToFront(); await sleep(200);
+    await uclick('.ss-pop [data-p="cancel"]');
+    ok(!(await ush('.ss-pop')), 'panel closed');
+    ok(await ush('.ss-stage'), 'editor still open');
+  });
+  await t('U7. a failed upload shows a clear error with Retry; the screenshot and its annotation are kept; Retry works and uploads exactly once', async () => {
+    share.mode = 'fail500';
+    const before = share.uploads.length;
+    await uclick('.ss-actions [data-act="share"]');
+    const tx = await waitPop(/Upload failed/);
+    ok(/Upload failed/.test(tx) && /had a problem \(500\)/.test(tx) && /still in the editor/.test(tx) && /Retry/.test(tx), tx);
+    eq(Number(await (await ush('.ss-stage')).evaluate((e) => e.dataset.count)), 1, 'annotation kept');
+    eq((await linkLabel()).text, 'Link', 'button usable again');
+    share.mode = 'ok';
+    await uclick('.ss-pop [data-p="primary"]');
+    await waitPop(/link copied/i);
+    eq(share.uploads.length - before, 2, 'one failed attempt + one retry, nothing duplicated');
+    await uclick('.ss-pop [data-p="cancel"]');
+  });
+  await t('U8. rate-limit, unreachable service and a link pointing to another site each give a useful message', async () => {
+    for (const [mode, re] of [['limit', /Too many uploads/], ['drop', /Could not reach the sharing service/], ['offsite', /unexpected answer/]]) {
+      share.mode = mode;
+      await uclick('.ss-actions [data-act="share"]');
+      const tx = await waitPop(/Upload failed/);
+      ok(re.test(tx), mode + ': ' + tx);
+      ok(await ush('.ss-stage'), 'editor intact after ' + mode);
+      await uclick('.ss-pop [data-p="cancel"]');
+    }
+    share.mode = 'ok';
+  });
+  await t('U9. Escape closes the panel first, then the editor, and leaves the page as before', async () => {
+    await uclick('.ss-actions [data-act="share"]');
+    await waitPop(/link copied/i);
+    await upage.keyboard.press('Escape'); await sleep(250);
+    ok(!(await ush('.ss-pop')) && (await ush('.ss-stage')), 'panel closed, editor open');
+    await upage.keyboard.press('Escape'); await sleep(500);
+    ok(!(await ush('.ss-stage')), 'editor gone');
+    eq((await browser.pages()).length, upagesBefore);
+    eq(await upage.title(), 'Screenshot page');
+  });
+  await t('U10. the shipped package contains no secrets, tokens or storage keys', async () => {
+    const { readdirSync, readFileSync: rf, statSync } = await import('node:fs');
+    const walk = (d) => readdirSync(d).flatMap((n) => { const p = join(d, n); return statSync(p).isDirectory() ? walk(p) : [p]; });
+    for (const f of walk(join(root, 'dist')).filter((x) => /\.(js|html|css|json)$/.test(x))) {
+      const txt = rf(f, 'utf8');
+      ok(!/UPLOAD_TOKEN|shareToken|Bearer\s|AWS_SECRET|R2_(SECRET|ACCESS)|secret[_-]?key|api[_-]?key\s*[:=]/i.test(txt), 'secret-like text in ' + f);
+    }
+  });
+  await upage.close();
+  await helper.evaluate(async (snap) => { await chrome.storage.local.clear(); await chrome.storage.local.set(snap); }, uSnapshot);
+}
+
 console.log('\nTest Q — Screenshot quality: the exported image is the captured image, pixel for pixel');
 {
   const qServerHits = [];
@@ -1474,5 +1653,6 @@ await t('no console / page errors were logged', async () => { ok(consoleErrors.l
 
 await browser.close();
 server.close();
+shareSrv.close();
 console.log(`\n${passed} passed, ${failures.length} failed`);
 if (failures.length) { console.log('Failed:', failures.join('; ')); process.exit(1); }

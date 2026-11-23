@@ -1,0 +1,20 @@
+name = "linklens-share"
+main = "worker.js"
+compatibility_date = "2025-01-01"
+
+# Free storage: Workers KV. Create it once with `npx wrangler kv namespace create SHOTS`
+# and paste the printed id below.
+[[kv_namespaces]]
+binding = "SHOTS"
+id = "0cbed9cc922a476ca2f10ee2840956c2"
+
+# Per-address upload limit: 20 uploads per minute (Cloudflare Workers Rate Limiting binding; delete this block if wrangler rejects it).
+[[unsafe.bindings]]
+name = "RATE_LIMITER"
+type = "ratelimit"
+namespace_id = "1001"
+simple = { limit = 20, period = 60 }
+
+[vars]
+EXPIRY_DAYS = "30"        # how long a link works (0 = never). Change and run `wrangler deploy`.
+# MAX_BYTES = "20971520"  # upload size limit, default 20 MB (KV allows at most 25 MiB)

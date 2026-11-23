@@ -26,6 +26,8 @@ const common = {
   sourcemap: dev ? 'inline' : false,
   legalComments: 'none',
   loader: { '.css': 'text' },
+  // the one upload API address for screenshot links, fixed at build time (never typed in by users)
+  define: { __SHARE_API__: JSON.stringify(process.env.LINKLENS_SHARE_API || 'https://linklens-share.ayush-patel-6d2.workers.dev') },
   logLevel: 'info',
 };
 const entries = {

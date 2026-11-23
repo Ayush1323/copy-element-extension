@@ -27,6 +27,20 @@ export async function copyImage(blob) {
   }
 }
 
+export function blobToDataUrl(blob) {
+  return new Promise((resolve, reject) => {
+    const r = new FileReader();
+    r.onload = () => resolve(String(r.result));
+    r.onerror = () => reject(new Error('Could not read the image.'));
+    r.readAsDataURL(blob);
+  });
+}
+
+/** Plain-text clipboard write; resolves false (never throws) when the browser refuses. */
+export async function copyText(text) {
+  try { await navigator.clipboard.writeText(text); return true; } catch (_) { return false; }
+}
+
 export function downloadBlob(blob, filename) {
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');

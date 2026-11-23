@@ -54,6 +54,7 @@ export function createToolbars(ui, { workspace, editor, actions }) {
   const acts = h('div', 'ss-tb ss-actions', `${grip}${zoomBits}
     <button class="ss-btn ss-primary wide" data-act="copy" data-tip="Copy to clipboard (${mod}+C)" aria-label="Copy screenshot">${icon('copy', 16)}<span>Copy</span></button>
     <button class="ss-btn wide" data-act="download" data-tip="Download PNG (${mod}+D)" aria-label="Download screenshot">${icon('download', 16)}<span>Download</span></button>
+    <button class="ss-btn wide" data-act="share" data-tip="Upload and get a link · anyone with the link can view it" aria-label="Copy shareable link">${icon('link', 16)}<span>Link</span></button>
     <button class="ss-btn wide" data-act="save" data-tip="Save as… (${mod}+S)" aria-label="Save screenshot">${icon('save', 16)}<span>Save</span></button>
     <i class="ss-sep"></i>
     <button class="ss-btn" data-act="close" data-tip="Close (Esc)" aria-label="Close editor">${icon('x', 17)}</button>`);
@@ -93,7 +94,7 @@ export function createToolbars(ui, { workspace, editor, actions }) {
   on(acts, 'click', (e) => {
     const a = e.target.closest('[data-act]');
     if (!a) return;
-    const fn = { copy: actions.copy, download: actions.download, save: actions.save, close: actions.close, zoomin: () => actions.zoom('in'), zoomout: () => actions.zoom('out'), zoomfit: () => actions.zoom('fit') }[a.dataset.act];
+    const fn = { copy: actions.copy, download: actions.download, share: actions.share, save: actions.save, close: actions.close, zoomin: () => actions.zoom('in'), zoomout: () => actions.zoom('out'), zoomfit: () => actions.zoom('fit') }[a.dataset.act];
     if (fn) fn();
   });
 
@@ -212,10 +213,21 @@ export function createToolbars(ui, { workspace, editor, actions }) {
     if (!b) return;
     b.classList.add(cls); setTimeout(() => b.classList.remove(cls), 900);
   }
+  /** The Link button's Uploading state: spinner + label, disabled so a second click cannot start a second upload. */
+  function setUploading(on) {
+    const b = acts.querySelector('[data-act="share"]');
+    if (!b) return;
+    b.classList.toggle('uploading', on);
+    b.querySelector('span:not(.ss-spin)').textContent = on ? 'Uploading…' : 'Link';
+    const old = b.querySelector('.ss-spin');
+    if (on && !old) b.insertBefore(h('span', 'ss-spin dark'), b.firstChild);
+    if (!on && old) old.remove();
+    b.querySelector('svg')?.toggleAttribute('hidden', on);
+  }
   function setBusy(action, busy) { const b = acts.querySelector(`[data-act="${action}"]`); if (b) b.disabled = busy; }
 
   return {
-    tools, options, acts, layout, update, setZoomLabel, flash, setBusy,
+    tools, options, acts, layout, update, setZoomLabel, flash, setBusy, setUploading,
     destroy() { bars.forEach((b) => b.remove()); },
   };
 }

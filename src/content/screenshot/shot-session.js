@@ -1,11 +1,13 @@
 import { h } from '../ui/shadow-root-ui.js';
 import { icon } from '../../shared/icons.js';
 import { getShotPrefs, saveShotPrefs } from '../../shared/storage.js';
+import { MSG } from '../../shared/message-types.js';
+import { expiryText, MAX_UPLOAD_BYTES } from '../../shared/share.js';
 import { captureVisible, captureFullPage, canStitch } from './capture-service.js';
 import { createSelection } from './selection-overlay.js';
 import { createEditor } from './editor.js';
 import { createToolbars } from './toolbars.js';
-import { canvasToBlob, copyImage, downloadBlob, saveBlob, defaultFilename, sanitizeFilename } from './export-service.js';
+import { canvasToBlob, blobToDataUrl, copyText, copyImage, downloadBlob, saveBlob, defaultFilename, sanitizeFilename } from './export-service.js';
 
 /**
  * One screenshot session, entirely on the current page: capture → select → edit → copy / download / save.
@@ -94,7 +96,7 @@ export function createShotSession({ ui, toast, onExit }) {
     bars = createToolbars(ui, {
       workspace,
       editor,
-      actions: { copy: doCopy, download: doDownload, save: openSavePopover, close: () => onExit(), zoom: zoomBy },
+      actions: { copy: doCopy, download: doDownload, share: doShare, save: openSavePopover, close: () => onExit(), zoom: zoomBy },
     });
     host.appendChild(editor.el);
     bars.update({ ...editor.state(), sel: editor.state().selProps });
@@ -204,6 +206,93 @@ export function createShotSession({ ui, toast, onExit }) {
 
   function closePopover() { if (popover) { popover.remove(); popover = null; } }
 
+  /** Puts the open popover under the actions bar (or above it when there is no room), inside the screen. */
+  function placePopover(pw, fallbackH) {
+    ui.layer.appendChild(popover);
+    const r = bars.acts.getBoundingClientRect();
+    const ph = popover.offsetHeight || fallbackH;
+    const vh = window.innerHeight, vw = document.documentElement.clientWidth || window.innerWidth;
+    const below = r.bottom + 8 + ph <= vh - 6;
+    popover.style.transform = `translate(${Math.round(Math.min(Math.max(r.right - pw, 6), vw - pw - 6))}px, ${Math.round(below ? r.bottom + 8 : Math.max(6, r.top - ph - 8))}px)`;
+  }
+
+  /* ----------------------------- shareable link ----------------------------- */
+  // Ready → Uploading → Link ready | Failed. Upload happens only when the user presses Link; the screenshot is never lost on failure.
+
+  const esc = (t) => String(t).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
+
+  const doShare = () => withBusy('share', async () => {
+    closePopover();
+    bars.setUploading(true);
+    try {
+      const canvas = editor.exportCanvas();
+      let blob = await canvasToBlob(canvas);
+      let note = '';
+      if (blob.size > MAX_UPLOAD_BYTES) { blob = await canvasToBlob(canvas, 'image/jpeg', 0.92); note = 'Large image: uploaded as JPEG to keep it small.'; }
+      let res;
+      try { res = await chrome.runtime.sendMessage({ type: MSG.UPLOAD_SHOT, dataUrl: await blobToDataUrl(blob) }); }
+      catch (_) { throw new Error('The extension was reloaded. Refresh this page and try again (your screenshot here is kept until then).'); }
+      if (destroyed || !bars) return; // the editor was closed while uploading
+      if (!res || !res.ok) throw new Error((res && res.error) || 'Upload failed.');
+      const copied = await copyText(res.url);
+      bars.flash('share');
+      toast(copied ? 'Screenshot link copied!' : 'Screenshot link ready', 'success');
+      openLinkPopover(res.url, res.expiresAt, copied, note);
+    } catch (e) {
+      if (destroyed || !bars) return;
+      openFailPopover((e && e.message) || 'Upload failed.');
+    } finally {
+      if (bars) bars.setUploading(false);
+    }
+  });
+
+  function openLinkPopover(url, expiresAt, copied, note) {
+    closePopover();
+    const exp = expiryText(expiresAt);
+    popover = h('div', 'ss-pop ss-share', `
+      <div class="ss-pop-title ss-okt">${icon('check', 15)}<span>${copied ? 'Screenshot link copied!' : 'Your screenshot link is ready'}</span></div>
+      <input type="text" class="ss-url" readonly value="${esc(url)}" aria-label="Screenshot link" spellcheck="false">
+      <small class="ss-note">Anyone with this link can view this screenshot${exp ? ` · it is deleted after ${exp}` : ''}.${note ? ' ' + esc(note) : ''}</small>
+      <div class="ss-pop-actions">
+        <button class="ss-btn ss-primary wide" data-p="primary">${icon('copy', 15)}<span>Copy Link</span></button>
+        <button class="ss-btn wide" data-p="open">${icon('link', 15)}<span>Open Link</span></button>
+        <button class="ss-btn wide" data-p="download">${icon('download', 15)}<span>Download</span></button>
+        <button class="ss-btn wide" data-p="cancel">Close</button>
+      </div>`);
+    placePopover(340, 150);
+    const input = popover.querySelector('.ss-url');
+    popover.addEventListener('mousedown', (e) => { if (!e.target.closest('input')) e.preventDefault(); });
+    popover.addEventListener('click', async (e) => {
+      const b = e.target.closest('[data-p]');
+      if (!b) return;
+      if (b.dataset.p === 'cancel') closePopover();
+      else if (b.dataset.p === 'open') window.open(url, '_blank', 'noopener');
+      else if (b.dataset.p === 'download') doDownload();
+      else if (await copyText(url)) { toast('Screenshot link copied!', 'success'); bars.flash('share'); }
+      else { input.focus(); input.select(); toast('Press Ctrl+C to copy the selected link', 'success'); }
+    });
+    input.focus(); input.select();
+  }
+
+  function openFailPopover(message) {
+    closePopover();
+    popover = h('div', 'ss-pop ss-share', `
+      <div class="ss-pop-title ss-badt">${icon('x', 15)}<span>Upload failed</span></div>
+      <small class="ss-note ss-err">${esc(message)}</small>
+      <small class="ss-note">Your screenshot is still in the editor. Nothing was lost.</small>
+      <div class="ss-pop-actions">
+        <button class="ss-btn wide" data-p="cancel">Close</button>
+        <button class="ss-btn ss-primary wide" data-p="primary">${icon('redo', 15)}<span>Retry</span></button>
+      </div>`);
+    placePopover(340, 150);
+    popover.addEventListener('mousedown', (e) => e.preventDefault());
+    popover.addEventListener('click', (e) => {
+      const b = e.target.closest('[data-p]');
+      if (!b) return;
+      if (b.dataset.p === 'cancel') closePopover(); else doShare();
+    });
+  }
+
   function openSavePopover() {
     if (!editor) return;
     if (popover) { closePopover(); return; }
@@ -217,12 +306,7 @@ export function createShotSession({ ui, toast, onExit }) {
         ${typeof window.showSaveFilePicker === 'function' ? `<button class="ss-btn wide" data-p="saveas">${icon('save', 15)}<span>Choose location…</span></button>` : ''}
         <button class="ss-btn ss-primary wide" data-p="save">${icon('download', 15)}<span>Save</span></button>
       </div>`);
-    ui.layer.appendChild(popover);
-    const r = bars.acts.getBoundingClientRect();
-    const pw = 340, ph = popover.offsetHeight || 190;
-    const vh = window.innerHeight, vw = document.documentElement.clientWidth || window.innerWidth;
-    const below = r.bottom + 8 + ph <= vh - 6;
-    popover.style.transform = `translate(${Math.round(Math.min(Math.max(r.right - pw, 6), vw - pw - 6))}px, ${Math.round(below ? r.bottom + 8 : Math.max(6, r.top - ph - 8))}px)`;
+    placePopover(340, 190);
     let fmt = 'png';
     const input = popover.querySelector('.ss-name');
     popover.addEventListener('mousedown', (e) => { if (!e.target.closest('input')) e.preventDefault(); });
@@ -266,7 +350,7 @@ export function createShotSession({ ui, toast, onExit }) {
     const inField = e.composedPath && e.composedPath()[0] && /^(INPUT|TEXTAREA)$/.test(e.composedPath()[0].tagName || '');
     if (popover) {
       if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); closePopover(); return true; }
-      if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); popover.querySelector('[data-p="save"]').click(); return true; }
+      if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); popover.querySelector('[data-p="save"], [data-p="primary"]').click(); return true; }
       e.stopPropagation();
       return true; // typing a file name
     }
