@@ -1255,7 +1255,7 @@ console.log('\nTest X — Text Utils: a draggable on-page panel (case, spaces, f
     eq(await xpage.evaluate(() => { const r = document.querySelector('linklens-root').shadowRoot; return r.activeElement && r.activeElement.className; }), 'tu-ta', 'text box has focus');
     for (const t of ['upper', 'lower', 'first', 'words', 'spaces', 'dash', 'under']) ok(await xui(`[data-tool="${t}"]`), 'tool ' + t);
     ok(await xui('[data-tu="find"]') && await xui('[data-tu="copy"]') && await xui('[data-tu="close"]'), 'replace, copy, close');
-    ok(!(await xui('.indicator')) || (await (await xui('.indicator')).evaluate((e) => e.hidden)), 'no mode bar on top of the panel');
+    const bar = await xui('.indicator'); ok(bar && !(await bar.evaluate((e) => e.hidden)), 'the mode bar is shown above, like in every other mode'); ok(await xui('.indicator [data-m="textutils"].on'), 'with Utils highlighted'); const bb = await bar.boundingBox(); ok(bb.y + bb.height < b.y + 4, 'and the panel sits below it, not under it');
     eq(await xpage.evaluate(() => (window.__flash || []).length), 0, 'never flashed in the top-left corner');
   });
   await t('X2. the seven text tools do exactly what their names say', async () => {
@@ -1385,6 +1385,19 @@ console.log('\nTest X — Text Utils: a draggable on-page panel (case, spaces, f
     await xpage.mouse.move(5, 5); await xpage.keyboard.press('Escape'); await sleep(250);
     await xpage.keyboard.press('Escape'); await sleep(250);
     eq(await xpage.evaluate(() => !!document.querySelector('linklens-root')), false, 'Escape removes everything');
+  });
+  await t('X12. from Text Utils the mode bar switches to any other tool, and back; the typed text is kept', async () => {
+    await activate(xpage, 'textutils'); await sleep(500);
+    await xfill('keep me while switching');
+    await xclick('.indicator [data-m="element"]'); await sleep(500);
+    ok(!(await xui('.tu')) || (await (await xui('.tu')).evaluate((e) => e.hidden)), 'panel closed when another tool is chosen');
+    ok(await xui('.indicator [data-m="element"].on'), 'Element is now the active tab');
+    await xclick('.indicator [data-m="textutils"]'); await sleep(600);
+    eq(await xval(), 'keep me while switching', 'text is still there');
+    await xclick('.indicator [data-m="measure"]'); await sleep(500);
+    ok(await xui('.indicator [data-m="measure"].on'), 'Dimensions active');
+    await xpage.keyboard.press('Escape'); await sleep(300);
+    eq(await xpage.evaluate(() => !!document.querySelector('linklens-root')), false, 'Esc leaves');
   });
   await xpage.close();
   await helper.evaluate(() => chrome.storage.local.remove(['mi_textutils_pos']));

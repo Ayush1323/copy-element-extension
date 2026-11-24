@@ -236,7 +236,7 @@ export function createPickerController() {
           if (ui) { ui.setAccent(settings.highlightColor); renderHover(); }
         });
       }
-      if (parts.indicator) { if (mode === MODES.SCREENSHOT || mode === MODES.TEXTUTILS) parts.indicator.hide(); else parts.indicator.show(mode); }
+      if (parts.indicator) { if (mode === MODES.SCREENSHOT) parts.indicator.hide(); else parts.indicator.show(mode); }
       if (mode === MODES.TEXTUTILS) startUtils();
       if (mode === MODES.SCREENSHOT) startShot();
       if (mode === MODES.IMAGES) { clearImageCaches(); startImageIndex(); }
