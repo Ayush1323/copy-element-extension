@@ -33,8 +33,11 @@ const server = http.createServer((req, res) => {
   if (p === '/blocked') { res.setHeader('content-type', 'text/html'); res.setHeader('x-frame-options', 'DENY'); res.setHeader('content-security-policy', "frame-ancestors 'none'"); return res.end('<title>BLOCKED-PAGE</title><h1>blocked</h1>'); }
   if (p.startsWith('/nav')) { res.setHeader('content-type', 'text/html'); return res.end('<title>NAVIGATED</title><h1>navigated</h1>'); }
   try {
-    res.setHeader('content-type', 'text/html');
-    res.end(readFileSync(join(fixtures, p.slice(1) || 'clickable-card.html')));
+    const ext = (/\.([a-z]+)$/.exec(p) || [])[1];
+    res.setHeader('content-type', { svg: 'image/svg+xml', xml: 'application/xml', txt: 'text/plain' }[ext] || 'text/html');
+    let body = readFileSync(join(fixtures, p.slice(1) || 'clickable-card.html'));
+    if (p === '/sitemap.xml') body = Buffer.from(String(body).replaceAll('SEO_ORIGIN', req.headers.host)); // the sitemap lists pages of whatever port the test server got
+    res.end(body);
   } catch (_) { res.statusCode = 404; res.end('nope'); }
 });
 await new Promise((r) => server.listen(0, r));
@@ -1147,7 +1150,7 @@ await t('17b. the on-page mode bar has a Screenshot tab that starts a capture fr
   const btn = await sh('.seg [data-m="screenshot"]');
   ok(btn, 'Screenshot tab present next to Images');
   const labels = await (await sh('.seg')).evaluate((e) => [...e.querySelectorAll('button')].map((b) => b.dataset.m));
-  eq(labels.join(','), 'element,card,section,text,images,screenshot,textutils,measure');
+  eq(labels.join(','), 'element,card,section,text,images,screenshot,textutils,measure,seo');
   const bb = await btn.boundingBox();
   await page.mouse.click(bb.x + bb.width / 2, bb.y + bb.height / 2); await sleep(1300);
   ok(await sh('.ss-sel'), 'capture started from the bar');
@@ -1521,11 +1524,208 @@ console.log('\nTest P — popup: three big tools on one line, the rest below');
   });
   await t('P2. the other tools sit below under "More tools", including Dimensions', async () => {
     const more = await pp.$$eval('#more .action', (els) => els.map((e) => e.querySelector('.a-title').textContent));
-    eq(more.sort().join(','), ['Card Extractor', 'Dimensions', 'Inspect Images & Text', 'Section Extractor', 'Selected Text'].sort().join(','));
+    eq(more.sort().join(','), ['Card Extractor', 'Dimensions', 'Inspect Images & Text', 'SEO Analyzer', 'Section Extractor', 'Selected Text'].sort().join(','));
     const yBig = await pp.$eval('#actions', (e) => e.getBoundingClientRect().bottom), yMore = await pp.$eval('#more', (e) => e.getBoundingClientRect().top);
     ok(yMore > yBig, 'below the big row');
   });
   await pp.close();
+}
+
+console.log('\nTest E — SEO analyzer: eight tabs, score, robots.txt and sitemap, draggable, all on the page');
+{
+  await helper.evaluate(() => chrome.storage.local.remove(['mi_seo_pos']));
+  const otherSite = http.createServer((q, r) => { r.statusCode = 404; r.end('nope'); }); // a second origin, for the external-link check
+  await new Promise((r) => otherSite.listen(0, r));
+  const extBase = `http://127.0.0.1:${otherSite.address().port}`; // a different host name: that is what makes a link external
+  const epage = await openPage(`${base}/seo.html`, { stubExternal: false });
+  await epage.evaluate((ext) => { document.getElementById('l-ext').href = ext; window.__flash = []; const tick = () => { const r = document.querySelector('linklens-root'); const el = r && r.shadowRoot && r.shadowRoot.querySelector('.seo'); if (el && !el.hidden && getComputedStyle(el).visibility !== 'hidden') { const b = el.getBoundingClientRect(); if (b.left < 8 && b.top < 8) window.__flash.push([b.left, b.top]); } requestAnimationFrame(tick); }; tick(); }, `${extBase}/missing`);
+  const eui = (sel) => ui(epage, sel);
+  const etext = async (sel) => { const e = await eui(sel); return e ? e.evaluate((n) => n.innerText.replace(/\s+/g, ' ').trim()) : null; };
+  const eclick = async (sel) => { const e = await eui(sel); const b = await e.boundingBox(); await epage.mouse.click(b.x + b.width / 2, b.y + b.height / 2); await sleep(350); };
+  const gotoTab = (id) => eclick(`.seo-tab[data-tab="${id}"]`);
+  const panelBox = async () => (await eui('.seo')).boundingBox();
+  const count = (sel) => epage.evaluate((q) => document.querySelector('linklens-root').shadowRoot.querySelectorAll(q).length, sel);
+  const view = await epage.evaluate(() => [innerWidth, innerHeight]);
+
+  await t('E1. SEO opens as a panel on the right: header with the score, eight tabs, footer counts, mode bar above, page untouched', async () => {
+    const r = await activate(epage, 'seo');
+    ok(r && r.ok, JSON.stringify(r));
+    await sleep(900);
+    const b = await panelBox();
+    ok(b.x > view[0] / 3 && b.x >= 0 && b.y >= 0 && b.x + b.width <= view[0] && b.y + b.height <= view[1], 'on screen: ' + JSON.stringify(b));
+    const tabs = await epage.evaluate(() => Array.from(document.querySelector('linklens-root').shadowRoot.querySelectorAll('.seo-tab')).map((e) => e.dataset.tab));
+    eq(tabs.join(','), 'overview,headings,status,links,images,schema,social,resources');
+    const tb = await eui('.seo-tabs'); const tbb = await tb.boundingBox();
+    const lastTab = await (await eui('.seo-tab[data-tab="resources"]')).boundingBox();
+    ok(lastTab.x + lastTab.width <= tbb.x + tbb.width + 1, 'all eight tabs are visible without scrolling');
+    const s = Number(await etext('.seo-mini'));
+    ok(s > 0 && s <= 100, 'score in the header: ' + s);
+    ok(/H1\s*1\s*H2\s*3\s*H3\s*1\s*H4\s*1\s*H5\s*0\s*H6\s*0/.test(await etext('.seo-hc')), await etext('.seo-hc'));
+    ok(/LINKS\s*7/.test(await etext('.seo-fs')) && /IMAGES\s*3/.test(await etext('.seo-fs')), await etext('.seo-fs'));
+    const bar = await eui('.indicator'); ok(bar && !(await bar.evaluate((e) => e.hidden)) && await eui('.indicator [data-m="seo"].on'), 'mode bar with SEO highlighted');
+    eq(await epage.evaluate(() => (window.__flash || []).length), 0, 'never flashed in the top-left corner');
+  });
+  await t('E2. Overview: score ring, what to fix first, title / description with length gauges, canonical, robots, vitals', async () => {
+    const o = await etext('.seo-body');
+    ok(/Fix first/i.test(o) && /Title length/.test(o) && /1 image without alt/.test(o) && /Heading levels are skipped/.test(o), o.slice(0, 400));
+    ok(/Leave Calendar \| CollabCRM/.test(o) && /26 characters/.test(o), 'title and length');
+    ok(/53 characters|An effortless CRM/.test(o) || /\d+ characters/.test(o), 'description');
+    ok(/self-referencing/.test(o), 'canonical points to itself');
+    ok(/indexable/.test(o), 'indexable');
+    eq(await count('.seo-vt'), 5, 'five web-vital tiles');
+    ok(await eui('.seo-ring') && await eui('.seo-gauge'), 'ring and gauges');
+    await eclick('.seo-issue[data-tab="images"]'); // jumps to the related tab
+    ok(await eui('.seo-tab[data-tab="images"].on'), 'clicking an issue opens its tab');
+    await gotoTab('overview');
+  });
+  await t('E3. Headings: outline with levels, the problems found, click shows the heading on the page, copy as Markdown', async () => {
+    await gotoTab('headings');
+    eq(await count('.seo-hrow'), 6);
+    const t0 = await etext('.seo-body');
+    ok(/first heading is an H2/.test(t0) && /skip a level/.test(t0), t0.slice(0, 300));
+    await epage.evaluate(() => window.scrollTo(0, 0));
+    await eclick('.seo-hrow:nth-child(5)'); // the skipped H4
+    await sleep(300);
+    const outline = await (await eui('.outline')).boundingBox();
+    const h4 = await (await epage.$('#skipped')).boundingBox();
+    ok(Math.abs(outline.y - h4.y) < 12 && Math.abs(outline.x - h4.x) < 12, `outline on the heading: ${JSON.stringify(outline)} vs ${JSON.stringify(h4)}`);
+    await eclick('[data-act="copy-outline"]'); await sleep(250);
+    ok((await clip(epage)).startsWith('## Welcome to the calendar\n# Leave Calendar\n### Plan your time off'), await clip(epage));
+  });
+  await t('E4. Status: HTTP 200, indexable, timing, and the real response headers (loaded only when this tab is opened)', async () => {
+    await gotoTab('status'); await sleep(1200);
+    const s = await etext('.seo-body');
+    ok(/200/.test(s) && /OK/.test(s) && /Indexable/.test(s) && /Nothing is blocking indexing/.test(s), s.slice(0, 300));
+    ok(/ttfb/i.test(s) && /protocol/i.test(s), 'timing tiles');
+    ok(/content-type/.test(s) && /text\/html/.test(s), 'response headers: ' + s.slice(300, 700));
+    ok(/strict-transport-security/.test(s), 'security headers checklist');
+  });
+  await t('E5. Links: counts per kind, filters and search, problems flagged, status check, copy as CSV', async () => {
+    await gotoTab('links');
+    eq(await count('.seo-list > .seo-row'), 7);
+    const f = await etext('.seo-chipbar');
+    ok(/All\s*7/.test(f) && /Internal\s*5/.test(f) && /External\s*1/.test(f) && /Nofollow\s*2/.test(f) && /Issues\s*2/.test(f), f);
+    await eclick('[data-f="links:external"]'); eq(await count('.seo-list > .seo-row'), 1);
+    await eclick('[data-f="links:issues"]'); eq(await count('.seo-list > .seo-row'), 2);
+    const iss = await etext('.seo-list'); ok(/No anchor text/.test(iss) && /Generic anchor text/.test(iss), iss);
+    await eclick('[data-f="links:all"]');
+    await (await eui('.seo-search')).type('docs'); await sleep(250);
+    eq(await count('.seo-list > .seo-row'), 1, 'search narrows the list');
+    await (await eui('.seo-search')).evaluate((i) => { i.value = ''; i.dispatchEvent(new Event('input', { bubbles: true })); });
+    await eclick('[data-act="check-links"]');
+    for (let k = 0; k < 40 && /Checking/.test(await etext('[data-act="check-links"]')); k++) await sleep(250);
+    const res = await etext('.seo-body');
+    ok(/200/.test(res) && /404/.test(res), 'statuses shown (the page itself is 200, missing fixtures 404): ' + res.slice(0, 400));
+    ok(/checked/.test(res) && /broken or unreachable/.test(res), 'summary: ' + res.slice(0, 200));
+    await eclick('[data-act="copy-csv"]'); await sleep(250);
+    const csv = await clip(epage); ok(/^url,type,anchor text,rel,issues/.test(csv) && /sponsored/.test(csv) && csv.split('\n').length === 8, csv);
+  });
+  await t('E6. Images: alt state, oversized and missing-size warnings, filters, thumbnails, file sizes, click shows the image', async () => {
+    await gotoTab('images');
+    eq(await count('.seo-list > .seo-row'), 3);
+    const f = await etext('.seo-chipbar');
+    ok(/No alt\s*1/.test(f) && /Oversized\s*1/.test(f), f);
+    await eclick('[data-f="images:noalt"]'); eq(await count('.seo-list > .seo-row'), 1);
+    ok(/img-noalt\.svg/.test(await etext('.seo-list')) && /no alt attribute/.test(await etext('.seo-list')));
+    await eclick('[data-f="images:big"]'); ok(/Oversized: 400×200 shown at 60×30/.test(await etext('.seo-list')), await etext('.seo-list'));
+    await eclick('[data-f="images:all"]');
+    ok(/441\s*B/.test(await etext('.seo-list')), 'file size from the browser: ' + (await etext('.seo-list')).slice(0, 200));
+    ok(await count('.seo-th img') === 3, 'thumbnails');
+    await eclick('.seo-list > .seo-row:nth-child(2)'); await sleep(300);
+    const o = await (await eui('.outline')).boundingBox(); const im = await (await epage.$('#im-noalt')).boundingBox();
+    ok(Math.abs(o.x - im.x) < 12 && Math.abs(o.y - im.y) < 12, 'the image is outlined on the page');
+  });
+  await t('E7. Schema: JSON-LD types, missing recommended properties, view and copy the JSON', async () => {
+    await gotoTab('schema');
+    const s = await etext('.seo-body');
+    ok(/Organization/.test(s) && /Article/.test(s) && /CollabCRM/.test(s) && /datePublished/.test(s) && /image/.test(s) && /valid JSON/.test(s), s.slice(0, 400));
+    await eclick('[data-json="b0"]');
+    ok(/"@graph"/.test(await etext('.seo-pre')), 'JSON shown');
+    await eclick('.seo-ch .seo-cp'); await sleep(250);
+    const j = JSON.parse(await clip(epage)); ok(j['@graph'].length === 2, 'valid JSON copied');
+  });
+  await t('E8. Social: Facebook and X previews with the real image, its size, and every Open Graph / Twitter tag', async () => {
+    await gotoTab('social'); await sleep(900);
+    const s = await etext('.seo-body');
+    ok(/FACEBOOK/i.test(s) && /SUMMARY_LARGE_IMAGE/i.test(s) && /Leave Calendar \| CollabCRM/.test(s) && /Plan leave and attendance/.test(s), s.slice(0, 300));
+    ok(/1200×630/.test(s), 'og:image size read: ' + s.slice(0, 600));
+    ok(/og:title/.test(s) && /twitter:card/.test(s) && /summary_large_image/.test(s), 'tag table');
+    ok(await count('.seo-pimg img') === 2, 'both previews show the image');
+  });
+  await t('E9. Resources: requests, transfer, per-type totals, filters', async () => {
+    await gotoTab('resources');
+    const r = await etext('.seo-body');
+    ok(/REQUESTS\s*\d+/.test(r) && /TRANSFERRED/.test(r) && /IMAGES\s*3/.test(r), r.slice(0, 300));
+    await eclick('[data-f="resources:image"]'); ok((await count('.seo-list > .seo-row')) >= 3);
+    await eclick('[data-f="resources:script"]'); eq(await count('.seo-list > .seo-row'), 0);
+    ok(/No requests match/.test(await etext('.seo-list')));
+  });
+  await t('E10. robots.txt: is this page allowed, sitemaps, the file with highlighted rules; Sitemap: URLs and whether this page is listed', async () => {
+    await eclick('.seo-foot [data-drawer="robots"]'); await sleep(900);
+    const r = await etext('.seo-drawer');
+    ok(/All crawlers \(\*\)/.test(r) && /Googlebot/.test(r) && /this page is allowed/.test(r), r.slice(0, 300));
+    ok(/Disallow: \/admin\//.test(r) && /Sitemap: \/sitemap\.xml/.test(r), 'file shown');
+    ok(await count('.seo-pre .dis') === 3 && await count('.seo-pre .uag') === 2, 'rules highlighted');
+    await eclick('.seo-drawer [data-sitemap]'); await sleep(900);
+    const sm = await etext('.seo-drawer');
+    ok(/urls\s*3/i.test(sm) && /Listed/.test(sm) && /\/seo\.html/.test(sm) && /2026-03-01/.test(sm), sm.slice(0, 300));
+    await (await eui('.seo-drawer .seo-search')).type('about'); await sleep(250);
+    eq(await count('.seo-su'), 1, 'sitemap search');
+    await eclick('[data-act="close-drawer"]');
+    ok((await eui('.seo-drawer')) && await (await eui('.seo-drawer')).evaluate((e) => e.hidden), 'drawer closed, back on the tab');
+    await eclick('.seo-foot [data-drawer="sitemap"]'); await sleep(900);
+    ok(/Listed/.test(await etext('.seo-drawer')), 'the Sitemap button opens it directly');
+    await eclick('[data-act="close-drawer"]');
+  });
+  await t('E11. Refresh re-reads the page after it changed', async () => {
+    await gotoTab('overview');
+    await epage.evaluate(() => { const h = document.createElement('h1'); h.textContent = 'Second H1'; document.body.appendChild(h); });
+    await eclick('[data-act="refresh"]'); await sleep(300);
+    ok(/H1\s*2/.test(await etext('.seo-hc')), await etext('.seo-hc'));
+    await gotoTab('headings'); const hb = await etext('.seo-body'); ok(/2 H1 headings/.test(hb), hb.slice(0, 300));
+  });
+  await t('E12. the panel can be dragged anywhere (never off screen) and is remembered; reopening puts it back', async () => {
+    const b0 = await panelBox();
+    const head = await (await eui('.seo-head')).boundingBox();
+    await epage.mouse.move(head.x + 120, head.y + 16); await epage.mouse.down(); await epage.mouse.move(head.x - 200, head.y + 90, { steps: 8 }); await epage.mouse.up(); await sleep(250);
+    const b1 = await panelBox();
+    ok(Math.abs(b1.x - (b0.x - 320)) <= 2 && Math.abs(b1.y - (b0.y + 74)) <= 2, `moved: ${JSON.stringify(b0)} → ${JSON.stringify(b1)}`);
+    await epage.mouse.move(b1.x + 120, b1.y + 16); await epage.mouse.down(); await epage.mouse.move(-600, -600, { steps: 6 }); await epage.mouse.up(); await sleep(200);
+    const b2 = await panelBox(); ok(b2.x >= 0 && b2.y >= 0, 'clamped top-left: ' + JSON.stringify(b2));
+    await epage.mouse.move(b2.x + 120, b2.y + 16); await epage.mouse.down(); await epage.mouse.move(view[0] + 900, view[1] + 900, { steps: 6 }); await epage.mouse.up(); await sleep(200);
+    const b3 = await panelBox(); ok(b3.x + b3.width <= view[0] && b3.y + b3.height <= view[1] + 1, 'clamped bottom-right: ' + JSON.stringify(b3));
+    await epage.mouse.move(b3.x + 120, b3.y + 16); await epage.mouse.down(); await epage.mouse.move(380, 120, { steps: 6 }); await epage.mouse.up(); await sleep(300);
+    const spot = await panelBox();
+    await eclick('[data-act="close"]'); await sleep(300);
+    eq(await epage.evaluate(() => !!document.querySelector('linklens-root')), false, 'closing removes everything');
+    await epage.evaluate(() => { window.__flash = []; });
+    await activate(epage, 'seo'); await sleep(900);
+    const again = await panelBox();
+    ok(Math.abs(again.x - spot.x) <= 2 && Math.abs(again.y - spot.y) <= 2, `reopens where it was left: ${JSON.stringify(spot)} vs ${JSON.stringify(again)}`);
+    eq(await epage.evaluate(() => (window.__flash || []).length), 0, 'no flash in the corner');
+  });
+  await t('E13. the page stays usable around the panel; Esc leaves a search box first, then closes; the bar switches tools', async () => {
+    const lb = await (await epage.$('#l-top')).boundingBox();
+    await epage.evaluate(() => window.scrollTo(0, 0));
+    const lb2 = await (await epage.$('#l-top')).boundingBox();
+    await epage.mouse.click(lb2.x + 3, lb2.y + 3); await sleep(250);
+    ok(/#top$/.test(epage.url()), 'page links still work (nothing is intercepted): ' + epage.url() + ' ' + lb.x);
+    await gotoTab('links');
+    const si = await eui('.seo-search'); await si.type('zzz'); await sleep(150);
+    await epage.keyboard.press('Escape'); await sleep(250);
+    ok(await eui('.seo'), 'first Esc only clears the search');
+    eq(await (await eui('.seo-search')).evaluate((i) => i.value), '');
+    await eclick('.indicator [data-m="textutils"]'); await sleep(600);
+    ok(await eui('.tu') && !(await (await eui('.tu')).evaluate((e) => e.hidden)), 'the Utils tab switches to Text Utils');
+    ok(!(await eui('.seo')) || (await (await eui('.seo')).evaluate((e) => e.hidden)), 'and the SEO panel is gone');
+    await eclick('.indicator [data-m="seo"]'); await sleep(700);
+    ok(await eui('.seo') && !(await (await eui('.seo')).evaluate((e) => e.hidden)), 'back to SEO');
+    await epage.mouse.move(5, 5); await epage.keyboard.press('Escape'); await sleep(300);
+    eq(await epage.evaluate(() => !!document.querySelector('linklens-root')), false, 'Esc on the page removes everything');
+  });
+  await epage.close();
+  otherSite.close();
+  await helper.evaluate(() => chrome.storage.local.remove(['mi_seo_pos']));
 }
 
 console.log('\nTest Q — Screenshot quality: the exported image is the captured image, pixel for pixel');
@@ -1657,7 +1857,7 @@ console.log('\nPopup & options UI');
 await t('popup renders actions, status, activity and has no console errors', async () => {
   await helper.goto(`chrome-extension://${extId}/popup/popup.html`);
   await helper.waitForSelector('.action');
-  eq((await helper.$$('.action')).length, 8);
+  eq((await helper.$$('.action')).length, 9);
   ok(/Text Utils/.test(await helper.$eval('.action[data-mode="textutils"]', (e) => e.textContent)), 'Text Utils card');
   ok(await helper.$eval('.welcome h1', (e) => e.textContent.includes('Hover. Discover. Copy.')));
   ok((await helper.$$('#activity li')).length >= 1, 'activity lists recent copies');

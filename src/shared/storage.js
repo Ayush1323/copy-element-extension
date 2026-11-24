@@ -80,6 +80,14 @@ export async function saveShotPrefs(prefs) {
   try { await area().set({ [STORAGE_KEYS.SHOT_PREFS]: { ...SHOT_DEFAULTS, ...prefs } }); } catch (_) { /* extension context invalidated */ }
 }
 
+export async function getSeoPos() {
+  try { return (await area().get(STORAGE_KEYS.SEO_POS))[STORAGE_KEYS.SEO_POS] || null; } catch (_) { return null; }
+}
+
+export async function saveSeoPos(pos) {
+  try { await area().set({ [STORAGE_KEYS.SEO_POS]: { x: Number(pos.x) || 0, y: Number(pos.y) || 0 } }); } catch (_) { /* extension context invalidated */ }
+}
+
 export async function getUtilsPos() {
   try { return (await area().get(STORAGE_KEYS.UTILS_POS))[STORAGE_KEYS.UTILS_POS] || null; } catch (_) { return null; }
 }

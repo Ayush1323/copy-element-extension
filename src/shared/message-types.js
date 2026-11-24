@@ -8,5 +8,6 @@ export const MSG = Object.freeze({
   PREVIEW_TOKEN: 'MI_PREVIEW_TOKEN', // content -> service worker: token for the preview page
   PREVIEW_CHECK: 'MI_PREVIEW_CHECK', // preview page -> service worker: is this token valid?
   OPEN_OPTIONS: 'MI_OPEN_OPTIONS', // content -> service worker
+  CHECK_URL: 'MI_CHECK_URL', // content -> service worker: status of a link on another site (needs the optional all-sites permission)
   CAPTURE: 'MI_CAPTURE', // content -> service worker: chrome.tabs.captureVisibleTab of the sender's tab
 });

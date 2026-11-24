@@ -14,6 +14,7 @@ export function createIndicator(ui, { onMode, onExit }) {
       <button data-m="screenshot" title="Screenshot (Alt+Shift+S)">${icon('camera', 13)}<span>Screenshot</span></button>
       <button data-m="textutils" title="Text Utils: case, spaces, find &amp; replace">${icon('textutils', 13)}<span>Utils</span></button>
       <button data-m="measure" title="Dimensions: size, spacing and gaps">${icon('measure', 13)}<span>Measure</span></button>
+      <button data-m="seo" title="SEO: meta, headings, links, images, schema and more">${icon('seo', 13)}<span>SEO</span></button>
     </div>
     <button class="ind-exit" title="Exit (Esc)">${icon('x', 12)}<span>Exit</span><kbd>Esc</kbd></button>`);
   el.hidden = true;

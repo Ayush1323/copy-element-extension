@@ -1,6 +1,6 @@
 import { MODES, DEFAULT_SETTINGS } from '../../shared/constants.js';
 import { MSG } from '../../shared/message-types.js';
-import { getSettings, onStorageChange, getUtilsPos, saveUtilsPos } from '../../shared/storage.js';
+import { getSettings, onStorageChange, getUtilsPos, saveUtilsPos, getSeoPos, saveSeoPos } from '../../shared/storage.js';
 import { rafThrottle, truncate, extensionAlive } from '../../shared/helpers.js';
 import { logger } from '../../utils/logger.js';
 import { errorMessage } from '../../utils/error-handler.js';
@@ -18,6 +18,7 @@ import { imagesMode } from '../modes/images-mode.js';
 import { screenshotMode } from '../modes/screenshot-mode.js';
 import { textUtilsMode } from '../modes/textutils-mode.js';
 import { measureMode } from '../modes/measure-mode.js';
+import { seoMode } from '../modes/seo-mode.js';
 import { createShotSession } from '../screenshot/shot-session.js';
 import { createShadowUI } from '../ui/shadow-root-ui.js';
 import { createHighlight } from '../ui/selection-highlight.js';
@@ -31,12 +32,13 @@ import { createImageTip } from '../ui/image-inspector.js';
 import { createTextPanel } from '../ui/text-inspector.js';
 import { createTextUtilsPanel } from '../ui/text-utils-panel.js';
 import { createMeasureOverlay } from '../ui/measure-overlay.js';
+import { createSeoPanel } from '../ui/seo-panel.js';
 import { readBox, boxLayers, readGaps, measureBetween, shortSelector, cssSummary, deepElementAt } from './measure.js';
 import { readTextInfo, textTargetAt, textRectAt } from './text-info.js';
 import { imageTargetAt, clearImageCaches, startImageIndex, stopImageIndex } from './image-info.js';
 import { findLinkAt, readLinkInfo } from './link-info.js';
 
-const MODE_DEFS = { element: elementMode, card: cardMode, section: sectionMode, text: textMode, images: imagesMode, screenshot: screenshotMode, textutils: textUtilsMode, measure: measureMode };
+const MODE_DEFS = { element: elementMode, card: cardMode, section: sectionMode, text: textMode, images: imagesMode, screenshot: screenshotMode, textutils: textUtilsMode, measure: measureMode, seo: seoMode };
 const SWALLOWED = ['pointerdown', 'pointerup', 'mousedown', 'mouseup', 'dblclick', 'auxclick', 'touchstart', 'touchend'];
 const IS_TOP = (() => { try { return window.top === window; } catch (_) { return true; } })();
 
@@ -65,6 +67,7 @@ export function createPickerController() {
   let measureLevel = 0; // how many parents above the base
   let measurePin = null; // element the distances are measured from
   let measureShift = false; // Shift held: distance to the parent
+  let seoTimer = 0; // how long the outline stays on an element revealed from the SEO panel
   let utilsText = '' // what was in the Text Utils box when it was last closed (kept in memory only, for this page)
   let imageHover = null; // { el, kind, url } under the pointer in Inspect mode
   let textHover = false; // the typography panel is describing the text under the pointer
@@ -92,6 +95,7 @@ export function createPickerController() {
       imageTip: createImageTip(ui),
       textPanel: createTextPanel(ui, { onCopy: copyTextPart, onLeave: (e) => { last = { x: e.clientX, y: e.clientY }; scheduleImage(); } }),
       measure: IS_TOP ? createMeasureOverlay(ui) : null,
+      seo: IS_TOP ? createSeoPanel(ui, { onCopy: copyUtilsText, onClose: () => setMode(null), onReveal: revealSeoEl, onHover: hoverSeoEl, loadPos: getSeoPos, savePos: saveSeoPos }) : null,
       textUtils: IS_TOP ? createTextUtilsPanel(ui, { onCopy: copyUtilsText, onClose: () => setMode(null), loadPos: getUtilsPos, savePos: saveUtilsPos }) : null,
       toolbar: createToolbar(ui, { onAction: onToolbarAction }),
       toaster: createToaster(ui, () => settings.toastEnabled),
@@ -177,6 +181,8 @@ export function createPickerController() {
     textHover = false;
     if (shot) { shot.destroy(); shot = null; }
     stopUtils();
+    clearTimeout(seoTimer);
+    if (parts && parts.seo) parts.seo.hide();
     measureBase = measureTarget = measurePin = null;
     measureLevel = 0;
     measureShift = false;
@@ -216,7 +222,7 @@ export function createPickerController() {
   async function setMode(next, { broadcast = true } = {}) {
     if (next === mode) return mode;
     if (next && !extensionAlive()) { showReloadNotice(); return mode; }
-    if ((next === MODES.SCREENSHOT || next === MODES.TEXTUTILS || next === MODES.MEASURE) && !IS_TOP) return mode; // these panels live in the top frame only
+    if ((next === MODES.SCREENSHOT || next === MODES.TEXTUTILS || next === MODES.MEASURE || next === MODES.SEO) && !IS_TOP) return mode; // these panels live in the top frame only
     if (mode) { detach(); hovered = null; }
     mode = next;
     if (!mode) {
@@ -238,6 +244,7 @@ export function createPickerController() {
       }
       if (parts.indicator) { if (mode === MODES.SCREENSHOT) parts.indicator.hide(); else parts.indicator.show(mode); }
       if (mode === MODES.TEXTUTILS) startUtils();
+      if (mode === MODES.SEO && parts.seo) parts.seo.show();
       if (mode === MODES.SCREENSHOT) startShot();
       if (mode === MODES.IMAGES) { clearImageCaches(); startImageIndex(); }
     }
@@ -348,6 +355,28 @@ export function createPickerController() {
     toast(res.ok ? 'Copied dimensions' : res.error || 'Copy failed', res.ok ? 'success' : 'error', res.ok ? shortSelector(measureTarget) : '');
     if (res.ok) lastCopyAt = Date.now();
     return !!res.ok;
+  }
+
+  /* ---------------- SEO panel: show the page element a list row talks about ---------------- */
+
+  function revealSeoEl(el) {
+    if (!el || !el.isConnected || !parts) return;
+    try { el.scrollIntoView({ block: 'center', inline: 'nearest' }); } catch (_) { /* detached */ }
+    requestAnimationFrame(() => {
+      if (!parts || mode !== MODES.SEO) return;
+      parts.highlight.show(rectOf(el), shortSelector(el), { showLabel: true, animate: false });
+      clearTimeout(seoTimer);
+      seoTimer = setTimeout(() => { if (parts) parts.highlight.hide(); }, 2200);
+    });
+  }
+
+  function hoverSeoEl(el) {
+    if (!parts || mode !== MODES.SEO) return;
+    clearTimeout(seoTimer);
+    if (!el || !el.isConnected) { parts.highlight.hide(); return; }
+    const r = rectOf(el);
+    if (r.bottom < 0 || r.top > window.innerHeight || r.right < 0 || r.left > window.innerWidth) { parts.highlight.hide(); return; } // off screen: click to scroll to it
+    parts.highlight.show(r, shortSelector(el), { showLabel: true });
   }
 
   /* ---------------- Text Utils (floating panel: case, spaces, find & replace) ---------------- */
@@ -758,7 +787,7 @@ export function createPickerController() {
 
   function updateSelectionButton() {
     if (!parts || !mode) return;
-    if (mode === MODES.SCREENSHOT || mode === MODES.TEXTUTILS || mode === MODES.MEASURE) { parts.selection.hide(); return; }
+    if (mode === MODES.SCREENSHOT || mode === MODES.TEXTUTILS || mode === MODES.MEASURE || mode === MODES.SEO) { parts.selection.hide(); return; }
     const sel = window.getSelection();
     if (mouseDown || !sel || sel.isCollapsed || !sel.toString().trim() || sel.rangeCount === 0) { parts.selection.hide(); return; }
     const anchor = sel.anchorNode && (sel.anchorNode.nodeType === 1 ? sel.anchorNode : sel.anchorNode.parentElement);
@@ -785,7 +814,7 @@ export function createPickerController() {
         return;
       }
     }
-    if (mode === MODES.TEXTUTILS && ui.owns(e)) return; // typing in the Text Utils box: the panel handles its own keys
+    if ((mode === MODES.TEXTUTILS || mode === MODES.SEO) && ui.owns(e)) return; // typing in the Text Utils box: the panel handles its own keys
     if (e.key === 'Escape') {
       if (parts.preview.isOpen()) { parts.preview.close(); e.preventDefault(); e.stopImmediatePropagation(); return; }
       e.preventDefault();

@@ -17,6 +17,7 @@ const ACTIONS = [
   { id: MODES.TEXTUTILS, title: 'Text Utils', desc: 'Case, spaces & find / replace', iconName: 'textutils', hint: '', featured: true },
   { id: MODES.SCREENSHOT, title: 'Screenshot', desc: 'Capture & annotate on the page', iconName: 'camera', hint: 'Alt+Shift+S', featured: true },
   // more tools
+  { id: MODES.SEO, title: 'SEO Analyzer', desc: 'Meta, headings, links, images & schema', iconName: 'seo', hint: '' },
   { id: MODES.MEASURE, title: 'Dimensions', desc: 'Size, spacing & gaps between elements', iconName: 'measure', hint: '' },
   { id: MODES.IMAGES, title: 'Inspect Images & Text', desc: 'Image size & source, fonts and colors', iconName: 'image', hint: '' },
   { id: MODES.CARD, title: 'Card Extractor', desc: 'Grab a whole card', iconName: 'card', hint: '' },
@@ -87,7 +88,7 @@ function renderStatus() {
   const active = !!state.mode;
   const domain = state.tab && !state.restricted ? domainOf(state.tab.url) : state.restricted ? 'Restricted page' : '—';
   const last = state.last;
-  const modeName = { element: 'Element Picker', card: 'Card Extractor', section: 'Section Extractor', text: 'Selected Text', images: 'Inspect Images & Text', screenshot: 'Screenshot', textutils: 'Text Utils', measure: 'Dimensions' }[state.mode];
+  const modeName = { element: 'Element Picker', card: 'Card Extractor', section: 'Section Extractor', text: 'Selected Text', images: 'Inspect Images & Text', screenshot: 'Screenshot', textutils: 'Text Utils', measure: 'Dimensions', seo: 'SEO Analyzer' }[state.mode];
   $('#status').innerHTML = `
     <div class="cell"><span class="k">${icon('pointer', 13)}Picker</span><span class="v"><i class="dot ${active ? 'on' : ''}"></i>${active ? escapeHtml(modeName) : 'Inactive'}</span></div>
     <div class="cell"><span class="k">${icon('globe', 13)}Website</span><span class="v" title="${escapeHtml(domain)}">${escapeHtml(domain || '—')}</span></div>

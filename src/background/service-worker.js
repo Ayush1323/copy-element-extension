@@ -99,6 +99,26 @@ export async function syncPreviewRule({ force = false } = {}) {
   } catch (_) { /* DNR unavailable: previews fall back to plain frames */ }
 }
 
+/** HTTP status of a link on any site, for the SEO panel's optional link check. Only with the all-sites permission; nothing is stored. */
+async function checkUrl(url) {
+  let u;
+  try { u = new URL(url); } catch (_) { return { ok: false, error: 'Invalid URL' }; }
+  if (!/^https?:$/.test(u.protocol)) return { ok: false, error: 'Not an http(s) link' };
+  let allowed = false;
+  try { allowed = await chrome.permissions.contains({ origins: ['<all_urls>'] }); } catch (_) { /* noop */ }
+  if (!allowed) return { ok: false, error: 'no_permission' };
+  for (const method of ['HEAD', 'GET']) {
+    const ctl = new AbortController();
+    const timer = setTimeout(() => ctl.abort(), 10000);
+    try {
+      const res = await fetch(u.href, { method, credentials: 'omit', cache: 'no-store', redirect: 'follow', signal: ctl.signal });
+      if ((res.status === 405 || res.status === 501) && method === 'HEAD') continue;
+      return { ok: true, status: res.status, redirected: res.redirected };
+    } catch (_) { if (method === 'GET') return { ok: false, error: 'Could not be reached' }; } finally { clearTimeout(timer); }
+  }
+  return { ok: false, error: 'Could not be reached' };
+}
+
 async function previewToken() {
   const got = await chrome.storage.session.get('miPreviewToken');
   if (got.miPreviewToken) return got.miPreviewToken;
@@ -134,6 +154,10 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       (dataUrl) => sendResponse({ ok: true, dataUrl }),
       (e) => sendResponse({ ok: false, error: String((e && e.message) || e) }),
     );
+    return true;
+  }
+  if (msg.type === MSG.CHECK_URL && sender.tab) {
+    checkUrl(msg.url).then(sendResponse, () => sendResponse({ ok: false, error: 'Could not be reached' }));
     return true;
   }
   if (msg.type === MSG.OPEN_OPTIONS) {

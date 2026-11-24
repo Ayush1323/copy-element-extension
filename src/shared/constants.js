@@ -11,6 +11,7 @@ export const MODES = Object.freeze({
   SCREENSHOT: 'screenshot',
   TEXTUTILS: 'textutils',
   MEASURE: 'measure',
+  SEO: 'seo',
 });
 
 export const FORMATS = Object.freeze({ PLAIN: 'plain', RICH: 'rich', MARKDOWN: 'markdown' });
@@ -35,6 +36,7 @@ export const STORAGE_KEYS = Object.freeze({
   LAST: 'mi_last',
   SHOT_PREFS: 'mi_shot_prefs',
   UTILS_POS: 'mi_textutils_pos', // where the Text Utils panel was left (never the text)
+  SEO_POS: 'mi_seo_pos', // where the SEO panel was left
 });
 
 export const HISTORY_LIMIT = 25;
@@ -49,6 +51,7 @@ export const MODE_META = Object.freeze({
   screenshot: { label: 'Screenshot', short: 'Screenshot' },
   textutils: { label: 'Text Utils', short: 'Text Utils' },
   measure: { label: 'Dimensions', short: 'Dimensions' },
+  seo: { label: 'SEO', short: 'SEO' },
 });
 
 /** Remembered editor choices for the screenshot feature. */

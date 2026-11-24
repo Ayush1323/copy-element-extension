@@ -1,0 +1,10 @@
+# robots for tests
+User-agent: *
+Disallow: /admin/
+Disallow: /private
+Allow: /private/open
+
+User-agent: Googlebot
+Disallow: /nogoogle
+
+Sitemap: /sitemap.xml
