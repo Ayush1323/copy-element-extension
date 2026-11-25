@@ -5,7 +5,7 @@ import puppeteer from 'puppeteer-core';
 import http from 'node:http';
 import { readFileSync, cpSync, rmSync, writeFileSync, mkdirSync } from 'node:fs';
 import { resolve, join, dirname } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const tmp = join(root, 'tests/e2e/.tmp');
@@ -1509,22 +1509,45 @@ console.log('\nTest D — Dimensions: box model, flex / grid gaps, pin and measu
 console.log('\nTest P — popup: three big tools on one line, the rest below');
 {
   const pp = await browser.newPage();
-  await pp.setViewport({ width: 440, height: 900 });
+  await pp.setViewport({ width: 680, height: 900 });
   await pp.goto(`chrome-extension://${extId}/popup/popup.html`);
   await pp.waitForSelector('.action');
-  await t('P1. the first row is Text Picker, Text Utils and Screenshot, side by side, as big cards', async () => {
+  await t('P1. the four main tools are big cards in a two-column grid: Text Picker, Text Utils / Screenshot, SEO Analyzer', async () => {
     const big = await pp.$$eval('#actions .action', (els) => els.map((e) => { const r = e.getBoundingClientRect(); return { t: e.querySelector('.a-title').textContent, x: Math.round(r.x), y: Math.round(r.y), w: Math.round(r.width), h: Math.round(r.height), big: e.classList.contains('big') }; }));
-    eq(big.map((b) => b.t).join(','), 'Text Picker,Text Utils,Screenshot');
-    ok(big.every((b) => b.big && b.y === big[0].y), 'all on one line: ' + JSON.stringify(big));
-    ok(big[0].x < big[1].x && big[1].x < big[2].x, 'left to right in that order');
-    ok(big.every((b) => b.w >= 120 && b.h >= 150), 'big cards: ' + JSON.stringify(big.map((b) => [b.w, b.h])));
+    eq(big.map((b) => b.t).join(','), 'Text Picker,Text Utils,Screenshot,SEO Analyzer');
+    ok(big.every((b) => b.big), 'all big cards');
+    ok(big[0].y === big[1].y && big[2].y === big[3].y && big[2].y > big[0].y + 70, 'two per row, two rows: ' + JSON.stringify(big.map((b) => [b.x, b.y])));
+    ok(big[0].x === big[2].x && big[1].x === big[3].x && big[0].x < big[1].x, 'two aligned columns');
+    ok(big.every((b) => b.w >= 260 && b.h >= 78), 'big cards: ' + JSON.stringify(big.map((b) => [b.w, b.h])));
     const bodyW = await pp.evaluate(() => document.body.getBoundingClientRect().width);
-    ok(bodyW >= 430, 'the popup itself is wider: ' + bodyW);
-    ok(big[2].x + big[2].w <= bodyW, 'nothing cut off at the right edge');
+    ok(bodyW >= 670, 'the popup itself is wide: ' + bodyW);
+    ok(big[1].x + big[1].w <= bodyW, 'nothing cut off at the right edge');
+    const kbd = await pp.$$eval('#actions .a-kbd', (e) => e.map((x) => x.textContent));
+    eq(kbd.join(','), 'AltE,AltU,AltShiftS,AltO', 'keyboard shortcuts are shown on the cards');
   });
-  await t('P2. the other tools sit below under "More tools", including Dimensions', async () => {
+  await t('P3. no card title wraps and no description is cut off, big or small', async () => {
+    const bad = await pp.$$eval('.action', (els) => els.map((e) => {
+      const t = e.querySelector('.a-title'), d = e.querySelector('.a-desc');
+      const lines = (el) => Math.round(el.getBoundingClientRect().height / parseFloat(getComputedStyle(el).lineHeight || '18'));
+      return { title: t.textContent, titleLines: lines(t), titleCut: t.scrollWidth > t.clientWidth + 1, descTruncated: d.scrollHeight > d.clientHeight + 1, overflowX: e.scrollWidth > e.clientWidth + 1 };
+    }).filter((x) => x.titleLines > 1 || x.titleCut || x.descTruncated || x.overflowX));
+    eq(JSON.stringify(bad), '[]', 'cards with wrapped titles or clipped text');
+  });
+  await t('P4. arrow keys move between the tool cards (two columns), and there is no search bar in the header', async () => {
+    ok(!(await pp.$('#search')) && !(await pp.$('.header .search')), 'no search bar');
+    eq((await pp.$$('.action')).length, 9, 'all nine tools are always shown');
+    await pp.evaluate(() => document.querySelectorAll('.action').forEach((c) => { c.disabled = false; })); // a normal web page enables the cards (this test page is a browser page)
+    await pp.focus('.action'); await sleep(100);
+    const title = () => pp.evaluate(() => document.activeElement.querySelector('.a-title') && document.activeElement.querySelector('.a-title').textContent);
+    eq(await title(), 'Text Picker');
+    await pp.keyboard.press('ArrowRight'); await sleep(100); eq(await title(), 'Text Utils');
+    await pp.keyboard.press('ArrowDown'); await sleep(100); eq(await title(), 'SEO Analyzer', 'down a row');
+    await pp.keyboard.press('ArrowLeft'); await sleep(100); eq(await title(), 'Screenshot');
+    await pp.keyboard.press('ArrowUp'); await sleep(100); eq(await title(), 'Text Picker', 'up a row');
+  });
+  await t('P2. the other tools sit below under "More tools": Inspect Images & Text first, then Dimensions', async () => {
     const more = await pp.$$eval('#more .action', (els) => els.map((e) => e.querySelector('.a-title').textContent));
-    eq(more.sort().join(','), ['Card Extractor', 'Dimensions', 'Inspect Images & Text', 'SEO Analyzer', 'Section Extractor', 'Selected Text'].sort().join(','));
+    eq(more.join(','), 'Inspect Images & Text,Dimensions,Card Extractor,Section Extractor,Selected Text', 'in this order');
     const yBig = await pp.$eval('#actions', (e) => e.getBoundingClientRect().bottom), yMore = await pp.$eval('#more', (e) => e.getBoundingClientRect().top);
     ok(yMore > yBig, 'below the big row');
   });
@@ -1728,6 +1751,318 @@ console.log('\nTest E — SEO analyzer: eight tabs, score, robots.txt and sitema
   await helper.evaluate(() => chrome.storage.local.remove(['mi_seo_pos']));
 }
 
+console.log('\nTest H — Themes: pick a theme in Settings; popup, settings page and every on-page tool follow it live');
+{
+  const { readdirSync, existsSync: ex } = await import('node:fs');
+  const getSettingsRaw = () => helper.evaluate(async () => (await chrome.storage.local.get('mi_settings')).mi_settings || {});
+  const setSettingsRaw = (patch) => helper.evaluate(async (p) => { const cur = (await chrome.storage.local.get('mi_settings')).mi_settings || {}; await chrome.storage.local.set({ mi_settings: { ...cur, ...p } }); }, patch);
+  await helper.evaluate(async () => { const cur = (await chrome.storage.local.get('mi_settings')).mi_settings || {}; delete cur.theme; delete cur.highlightColor; await chrome.storage.local.set({ mi_settings: cur }); });
+  const op = await browser.newPage();
+  await op.setViewport({ width: 1240, height: 900 });
+  await op.goto(`chrome-extension://${extId}/options/options.html`);
+  await op.waitForSelector('.theme');
+  const rootVar = (pg, name) => pg.evaluate((n) => document.documentElement.style.getPropertyValue(n).trim(), name);
+  const layerVarOf = (pg) => (n) => pg.evaluate((v) => document.querySelector('linklens-root').shadowRoot.querySelector('.layer').style.getPropertyValue(v).trim(), n);
+
+  await t('H1. Settings has an Appearance section with eight simple themes; Indigo is the default', async () => {
+    eq((await op.$$('.theme')).length, 8);
+    const names = await op.$$eval('.theme .tn b', (e) => e.map((x) => x.textContent));
+    eq(names.join(), 'Indigo,Ocean,Mint,Emerald,Teal,Violet,Rose,Moss');
+    eq(await op.$eval('.theme.on .tn b', (e) => e.textContent), 'Indigo');
+    eq(await rootVar(op, '--t-primary'), '#4F46E5');
+    eq(await op.$eval('.theme.on', (e) => e.getAttribute('aria-checked')), 'true');
+  });
+  await t('H2. choosing a theme changes the settings page at once and is saved', async () => {
+    await op.click('.theme[data-theme="ocean"]'); await sleep(400);
+    eq(await rootVar(op, '--t-primary'), '#2563EB', 'colours switched immediately');
+    eq(await op.$eval('.theme.on .tn b', (e) => e.textContent), 'Ocean');
+    eq((await getSettingsRaw()).theme, 'ocean');
+    const bg = await op.evaluate(() => getComputedStyle(document.body).backgroundColor);
+    const want = await op.evaluate(() => { const h = getComputedStyle(document.documentElement).getPropertyValue('--t-bg').trim(); const n = parseInt(h.slice(1), 16); return `rgb(${n >> 16}, ${(n >> 8) & 255}, ${n & 255})`; });
+    eq(bg, want, 'the page background is the theme\'s');
+  });
+  await t('H3. the popup opens in the chosen theme: a clean white header, and it follows a change while open', async () => {
+    const pp = await browser.newPage();
+    await pp.goto(`chrome-extension://${extId}/popup/popup.html`);
+    await pp.waitForSelector('.action');
+    eq(await rootVar(pp, '--t-primary'), '#2563EB');
+    eq(await pp.evaluate(() => document.documentElement.dataset.theme), 'ocean');
+    eq(await pp.$eval('.header', (e) => getComputedStyle(e).backgroundColor), 'rgb(255, 255, 255)', 'white header');
+    const icons = await pp.$$eval('#actions .a-icon', (els) => els.map((e) => getComputedStyle(e).backgroundImage));
+    ok(icons.length === 4 && new Set(icons).size === 1 && /linear-gradient/.test(icons[0]), 'one calm colour family for all main tools: ' + icons.map((i) => i.slice(0, 50)).join(' | '));
+    await setSettingsRaw({ theme: 'rose' }); await sleep(500);
+    eq(await rootVar(pp, '--t-primary'), '#E11D48', 'an open popup follows a change');
+    await pp.close();
+  });
+  await t('H4. every on-page tool follows the theme, and an open page changes live when the theme changes', async () => {
+    const tp = await openPage(`${base}/typography.html`, { stubExternal: false });
+    await activate(tp, 'element'); await sleep(500);
+    const layerVar = layerVarOf(tp);
+    eq(await layerVar('--t-primary'), '#E11D48', 'the on-page interface uses the saved theme (rose)');
+    await setSettingsRaw({ theme: 'teal' }); await sleep(700);
+    eq(await layerVar('--t-primary'), '#0F766E', 'changed live, no reload');
+    eq(await tp.evaluate(() => getComputedStyle(document.querySelector('linklens-root').shadowRoot.querySelector('.indicator')).backgroundColor), 'rgb(255, 255, 255)', 'the mode bar is clean white');
+    eq(await tp.evaluate(() => getComputedStyle(document.querySelector('linklens-root').shadowRoot.querySelector('.layer')).getPropertyValue('--accent').trim()), '#0F766E', 'the highlight colour follows the theme by default');
+    for (const m of ['textutils', 'seo', 'measure']) {
+      await activate(tp, m); await sleep(600); // switches mode in the same session
+      eq(await layerVar('--t-primary'), '#0F766E', m + ' panel uses the theme');
+    }
+    await tp.keyboard.press('Escape'); await sleep(300);
+    await tp.close();
+  });
+  await t('H5. a custom highlight colour overrides the theme; "Theme" gives control back', async () => {
+    await op.bringToFront(); await op.reload(); await op.waitForSelector('.theme');
+    ok(await op.$('.colors button.auto.on'), '"Theme" is selected by default');
+    await op.click('.colors button[title="#0891B2"]'); await sleep(300);
+    eq((await getSettingsRaw()).highlightColor, '#0891B2');
+    const tp = await openPage(`${base}/typography.html`, { stubExternal: false });
+    await activate(tp, 'element'); await sleep(500);
+    const acc = () => tp.evaluate(() => document.querySelector('linklens-root').shadowRoot.querySelector('.layer').style.getPropertyValue('--accent').trim());
+    eq(await acc(), '#0891B2', 'custom colour on the page');
+    await op.bringToFront(); await op.click('.colors button.auto'); await sleep(700);
+    eq(await acc(), '', 'back to following the theme');
+    eq((await getSettingsRaw()).highlightColor, '');
+    await tp.keyboard.press('Escape'); await sleep(300); await tp.close();
+  });
+  await t('H5b. the custom colour opens a popover inside the page (not the browser picker at the screen edge): palette, hex field, Enter / Use, Esc, bad input', async () => {
+    await op.bringToFront(); await op.setViewport({ width: 1240, height: 900 }); await op.reload(); await op.waitForSelector('.cc');
+    const inside = async () => op.evaluate(() => { const r = document.querySelector('.cpop').getBoundingClientRect(); return { l: r.left, r: r.right, t: r.top, b: r.bottom, vw: document.documentElement.clientWidth, vh: innerHeight }; });
+    await op.click('.cc'); await sleep(250);
+    ok(await op.$('.cpop'), 'popover opens');
+    const g = await inside();
+    ok(g.l >= 0 && g.r <= g.vw && g.t >= 0 && g.b <= g.vh, 'fully inside the window: ' + JSON.stringify(g));
+    eq((await op.$$('.cp-sw')).length, 24, 'a palette of 24 colours');
+    eq(await op.evaluate(() => document.activeElement.className), 'cp-hex', 'the hex field is focused');
+    await op.keyboard.press('Escape'); await sleep(200);
+    ok(!(await op.$('.cpop')), 'Esc closes it');
+    ok(await op.$('.cc'), 'and the page is still intact');
+    await op.click('.cc'); await sleep(200);
+    await op.click('.cp-hex', { clickCount: 3 }); await op.keyboard.type('nonsense'); await op.keyboard.press('Enter'); await sleep(200);
+    ok(!(await op.$eval('.cp-err', (e) => e.hidden)), 'a bad colour shows a message, nothing is saved');
+    ok(!!(await op.$('.cpop')), 'and the popover stays open');
+    eq((await getSettingsRaw()).highlightColor || '', '', 'nothing saved');
+    await op.click('.cp-hex', { clickCount: 3 }); await op.keyboard.type('#0b7285'); await sleep(100);
+    eq(await op.$eval('.cp-prev', (e) => getComputedStyle(e).backgroundColor), 'rgb(11, 114, 133)', 'the preview follows what you type');
+    await op.keyboard.press('Enter'); await sleep(400);
+    ok(!(await op.$('.cpop')), 'Enter applies and closes');
+    eq((await getSettingsRaw()).highlightColor, '#0B7285', 'saved, normalised');
+    ok(await op.$('.cc.on'), 'the swatch shows the custom colour is in use');
+    await op.click('.cc'); await sleep(200);
+    await op.click('.cp-sw[data-c="#F43F5E"]'); await sleep(400);
+    eq((await getSettingsRaw()).highlightColor, '#F43F5E', 'a palette colour applies at once');
+    await op.click('.cc'); await sleep(200);
+    await op.click('.cp-hex', { clickCount: 3 }); await op.keyboard.type('abc'); await op.click('.cp-ok'); await sleep(400);
+    eq((await getSettingsRaw()).highlightColor, '#AABBCC', 'three-digit hex works, with or without #');
+    await op.click('.cc'); await sleep(150);
+    await op.click('.hero h1'); await sleep(200);
+    ok(!(await op.$('.cpop')), 'clicking elsewhere closes it');
+    await op.click('.colors button.auto'); await sleep(400);
+    eq((await getSettingsRaw()).highlightColor, '', 'Theme gives control back');
+  });
+  await t('H6. settings saved before themes existed (the old default highlight colours) simply follow the theme', async () => {
+    await setSettingsRaw({ highlightColor: '#2563EB' });
+    const tp = await openPage(`${base}/typography.html`, { stubExternal: false });
+    await activate(tp, 'element'); await sleep(500);
+    eq(await tp.evaluate(() => document.querySelector('linklens-root').shadowRoot.querySelector('.layer').style.getPropertyValue('--accent').trim()), '', 'the old blue default is not forced on the new theme');
+    await tp.keyboard.press('Escape'); await sleep(300); await tp.close();
+  });
+  await t('H7. the toolbar badge uses the theme colour, and the toolbar icons exist for every theme', async () => {
+    await setSettingsRaw({ theme: 'violet', highlightColor: '' }); await sleep(400);
+    const tp = await openPage(`${base}/typography.html`, { stubExternal: false });
+    await activate(tp, 'element'); await sleep(600);
+    const [tab] = await helper.evaluate(() => chrome.tabs.query({ active: true, lastFocusedWindow: true }));
+    const badge = await sw.evaluate((id) => chrome.action.getBadgeBackgroundColor({ tabId: id }), tab.id);
+    eq(badge.slice(0, 3).join(), '124,58,237', 'badge is the violet theme\'s colour: ' + badge);
+    await tp.keyboard.press('Escape'); await sleep(300); await tp.close();
+    const themesDir = join(root, 'dist/icons/themes');
+    const ids = readdirSync(themesDir).sort();
+    eq(ids.join(), 'emerald,indigo,mint,moss,ocean,rose,teal,violet');
+    for (const id of ids) for (const s of [16, 32, 48, 128]) ok(ex(join(themesDir, id, `icon${s}.png`)), `${id}/icon${s}.png`);
+    for (const s of [16, 32, 48, 128]) ok(ex(join(root, 'dist/icons', `icon${s}.png`)), `default icon${s}.png`);
+  });
+  await t('H9. every theme keeps the same clean look: white bars with dark text, readable on any website', async () => {
+    for (const id of ['emerald', 'rose']) {
+      await setSettingsRaw({ theme: id }); await sleep(400);
+      const pp = await browser.newPage();
+      await pp.goto(`chrome-extension://${extId}/popup/popup.html`); await pp.waitForSelector('.action');
+      const h = await pp.$eval('.header', (e) => ({ bg: getComputedStyle(e).backgroundColor, color: getComputedStyle(e).color }));
+      eq(h.bg, 'rgb(255, 255, 255)', id + ': header is white');
+      ok(h.color !== 'rgb(255, 255, 255)', id + ': with dark text: ' + h.color);
+      await pp.close();
+    }
+    const tp = await openPage(`${base}/typography.html`, { stubExternal: false });
+    await activate(tp, 'element'); await sleep(500);
+    const bar = await tp.evaluate(() => { const e = document.querySelector('linklens-root').shadowRoot.querySelector('.indicator'); return { bg: getComputedStyle(e).backgroundColor, color: getComputedStyle(e).color }; });
+    eq(bar.bg, 'rgb(255, 255, 255)'); ok(bar.color !== 'rgb(255, 255, 255)', 'dark text on the mode bar: ' + bar.color);
+    await tp.keyboard.press('Escape'); await sleep(300); await tp.close();
+    await setSettingsRaw({ theme: 'violet' });
+  });
+  await t('H10. the settings page: settings first with a side navigation, the Appearance (themes) section after them, then Reset', async () => {
+    await op.setViewport({ width: 1240, height: 900 }); // a wide window: the navigation sits at the side (it folds into a top bar below 900px)
+    await op.bringToFront(); await op.reload(); await op.waitForSelector('.theme');
+    const tops = await op.evaluate(() => ['sec-copying', 'sec-interface', 'sec-privacy', 'sec-keys', 'sec-appearance', 'sec-reset'].map((id) => Math.round(document.getElementById(id).getBoundingClientRect().top + scrollY)));
+    ok(tops[0] <= tops[1] + 2 && tops[2] > tops[0] && tops[3] > tops[2] && tops[3] > tops[1] && tops[4] > tops[3] && tops[5] > tops[4], 'settings first, then shortcuts, then the themes, then Reset: ' + tops);
+    eq((await op.$$('.nav a')).length, 6, 'side navigation');
+    ok((await op.$$eval('.nav a i svg', (e) => e.length)) === 6, 'with icons');
+    await op.click('.nav a[data-nav="sec-appearance"]'); await sleep(900);
+    ok(await op.$('.nav a.on[data-nav="sec-appearance"]'), 'clicking a nav entry scrolls there and highlights it');
+    const y = await op.evaluate(() => document.getElementById('sec-appearance').getBoundingClientRect().top);
+    ok(y >= -5 && y < 200, 'the Appearance card is at the top of the screen: ' + y);
+    await op.evaluate(() => scrollTo(0, 0)); await sleep(700);
+    ok(await op.$('.nav a.on[data-nav="sec-copying"]'), 'scrolling back up highlights Copying again');
+    eq(await op.$eval('.side', (e) => getComputedStyle(e).position), 'sticky', 'the navigation stays in view');
+    eq(await op.$$eval('.card-h .ci svg', (e) => e.length), 6, 'every section has an icon');
+    await op.screenshot({ path: join(tmp, 'options.png'), fullPage: true });
+  });
+  await t('H11. the settings page uses the whole window: full-height sidebar, two columns of cards on a wide screen, one column on a narrow one', async () => {
+    await op.setViewport({ width: 1920, height: 1080 });
+    await op.bringToFront(); await op.reload(); await op.waitForSelector('.theme'); await sleep(300);
+    const g = await op.evaluate(() => {
+      const r = (id) => document.getElementById(id).getBoundingClientRect();
+      const side = document.querySelector('.side').getBoundingClientRect(), content = document.querySelector('.content').getBoundingClientRect();
+      return { side: [side.left, side.width, side.height], content: [content.left, content.width], copying: [r('sec-copying').left, r('sec-copying').top], interface: [r('sec-interface').left, r('sec-interface').top],
+        privacy: [r('sec-privacy').left, r('sec-privacy').top], keys: r('sec-keys').width, appearance: r('sec-appearance').width, themesPerRow: Math.round(r('sec-appearance').width / 250), vh: innerHeight };
+    });
+    ok(g.side[0] === 0 && g.side[2] >= g.vh - 1, 'the sidebar is flush left and full height: ' + g.side);
+    ok(g.content[1] > 1400, 'the content uses the width: ' + g.content[1]);
+    ok(g.interface[0] > g.copying[0] + 400 && Math.abs(g.interface[1] - g.copying[1]) < 2, 'Copying and Interface sit side by side: ' + [g.copying, g.interface]);
+    ok(Math.abs(g.privacy[0] - g.copying[0]) < 2 && g.privacy[1] > g.copying[1], 'History & privacy sits under Copying');
+    ok(g.keys > 1400 && g.appearance > 1400, 'Shortcuts and Appearance span the whole width: ' + [g.keys, g.appearance]);
+    const perRow = await op.evaluate(() => { const ys = [...document.querySelectorAll('.theme')].map((e) => Math.round(e.getBoundingClientRect().top)); return ys.filter((y) => y === ys[0]).length; });
+    ok(perRow === 4, 'the 8 theme cards sit 4 + 4: ' + perRow + ' in the first row');
+    const kcols = await op.evaluate(() => { const a = document.querySelector('#keysTools').getBoundingClientRect(), b = document.querySelector('#keysExtra').getBoundingClientRect(); return [a.left, b.left, a.top, b.top]; });
+    ok(kcols[1] > kcols[0] + 400 && Math.abs(kcols[2] - kcols[3]) < 2, 'the two shortcut lists sit side by side: ' + kcols);
+    await op.setViewport({ width: 1000, height: 900 }); await sleep(300);
+    const narrow = await op.evaluate(() => { const a = document.getElementById('sec-copying').getBoundingClientRect(), b = document.getElementById('sec-interface').getBoundingClientRect(); return [a.left, b.left, a.top, b.top]; });
+    ok(Math.abs(narrow[0] - narrow[1]) < 2 && narrow[3] > narrow[2], 'on a narrow window the cards stack in one column: ' + narrow);
+    await op.setViewport({ width: 1240, height: 900 });
+  });
+  await t('H12. the logo: the lens-and-pointer mark in the popup and settings follows the theme, and every toolbar icon is that artwork in the theme colour with transparent corners', async () => {
+    const { THEMES: TH, deriveColors: dc, hexToRgb: h2r } = await import(pathToFileURL(join(root, 'src/shared/themes.js')).href);
+    await setSettingsRaw({ theme: 'ocean' }); await sleep(300);
+    const pp = await browser.newPage(); await pp.setViewport({ width: 680, height: 700 });
+    await pp.goto(`chrome-extension://${extId}/popup/popup.html`); await pp.waitForSelector('.logo-mark');
+    const mark = () => pp.evaluate(() => { const e = document.querySelector('.header .logo-mark'); const a = getComputedStyle(e, '::after'); return { w: e.getBoundingClientRect().width, bg: getComputedStyle(e).backgroundColor, mask: a.webkitMaskImage || a.maskImage, white: a.backgroundColor }; });
+    let m = await mark();
+    eq(Math.round(m.w), 36); eq(m.bg, 'rgb(37, 99, 235)', 'the tile is the Ocean theme colour'); ok(/glyph\.png/.test(m.mask), 'the glyph is cut into it: ' + m.mask); eq(m.white, 'rgb(255, 255, 255)');
+    await setSettingsRaw({ theme: 'rose' }); await sleep(500);
+    m = await mark(); eq(m.bg, 'rgb(225, 29, 72)', 'an open popup re-colours the logo at once');
+    const loaded = await pp.evaluate(async () => { const r = await fetch('../icons/glyph.png'); return r.ok; });
+    ok(loaded, 'the glyph file is shipped');
+    await pp.close();
+    const op2 = await browser.newPage(); await op2.setViewport({ width: 1240, height: 800 });
+    await op2.goto(`chrome-extension://${extId}/options/options.html`); await op2.waitForSelector('.logo-mark');
+    eq(Math.round(await op2.$eval('.side .logo-mark', (e) => e.getBoundingClientRect().width)), 48, 'the settings logo is larger'); await op2.close();
+    const bad = [];
+    for (const th of TH) for (const S of [16, 32, 48, 128]) {
+      const px = await helper.evaluate(async (url, size) => {
+        const bm = await createImageBitmap(await (await fetch(url)).blob());
+        const c = new OffscreenCanvas(bm.width, bm.height); const x = c.getContext('2d'); x.drawImage(bm, 0, 0);
+        const at = (a, b) => Array.from(x.getImageData(a, b, 1, 1).data);
+        return { w: bm.width, corner: at(0, 0), tile: at(Math.max(1, Math.round(size * 0.04)), Math.round(size * 0.5)), ring: at(Math.round(size * 0.17), Math.round(size * 0.48)) };
+      }, `chrome-extension://${extId}/icons/themes/${th.id}/icon${S}.png`, S);
+      const want = h2r(dc(th).primary);
+      if (px.w !== S) bad.push(`${th.id} ${S}: width ${px.w}`);
+      if (px.corner[3] > 60) bad.push(`${th.id} ${S}: corner is not transparent (${px.corner})`);
+      if (!want.every((v, i) => Math.abs(px.tile[i] - v) <= 10) || px.tile[3] < 250) bad.push(`${th.id} ${S}: tile ${px.tile} is not ${want}`);
+      if (!(px.ring[0] > 225 && px.ring[1] > 225 && px.ring[2] > 225)) bad.push(`${th.id} ${S}: no white lens ring where expected (${px.ring})`);
+    }
+    eq(bad.join(' | '), '', 'toolbar icons');
+  });
+  await t('H8. Reset settings brings the default theme back', async () => {
+    await op.bringToFront(); await op.reload(); await op.waitForSelector('.theme');
+    eq(await op.$eval('.theme.on .tn b', (e) => e.textContent), 'Violet');
+    await op.click('#reset'); await sleep(500);
+    eq(await op.$eval('.theme.on .tn b', (e) => e.textContent), 'Indigo');
+    eq(await rootVar(op, '--t-primary'), '#4F46E5');
+  });
+  await op.close();
+}
+
+console.log('\nTest K — Keyboard shortcuts for every tool');
+{
+  const kpage = await openPage(`${base}/typography.html`, { stubExternal: false });
+  const kui = (sel) => ui(kpage, sel);
+  const press = async (code, { shift = false } = {}) => { await kpage.keyboard.down('Alt'); if (shift) await kpage.keyboard.down('Shift'); await kpage.keyboard.press(code); if (shift) await kpage.keyboard.up('Shift'); await kpage.keyboard.up('Alt'); await sleep(550); };
+  const activeTab = async () => { const b = await kui('.indicator [data-m].on'); return b ? b.evaluate((e) => e.dataset.m) : null; };
+  const exists = () => kpage.evaluate(() => !!document.querySelector('linklens-root'));
+
+  await t('K1. with any tool on, Alt + a letter jumps straight to every other tool', async () => {
+    await activate(kpage, 'element'); await sleep(500);
+    eq(await activeTab(), 'element');
+    const cases = [['KeyU', 'textutils', '.tu'], ['KeyO', 'seo', '.seo'], ['KeyM', 'measure', null], ['KeyI', 'images', null], ['KeyK', 'card', null], ['KeyT', 'text', null], ['KeyS', 'section', null], ['KeyE', 'element', null]];
+    for (const [code, mode, panel] of cases) {
+      // move the keyboard focus out of any box first: the page itself must receive the key
+      await kpage.evaluate(() => document.activeElement && document.activeElement.blur && document.activeElement.blur());
+      await kpage.mouse.move(700, 600);
+      await press(code);
+      eq(await activeTab(), mode, `Alt+${code.slice(3)} → ${mode}`);
+      if (panel) ok(await kui(panel) && !(await (await kui(panel)).evaluate((e) => e.hidden)), mode + ' panel is open');
+    }
+  });
+  await t('K2. Alt+Shift+S starts a screenshot from any tool, and Shift matters (Alt+S is the section extractor)', async () => {
+    await kpage.mouse.move(700, 600);
+    await press('KeyS', { shift: true }); await sleep(800);
+    ok(await kui('.ss-sel'), 'the capture layer is on the page');
+    await kpage.keyboard.press('Escape'); await sleep(500);
+    eq(await exists(), false, 'Esc leaves');
+  });
+  await t('K3. pressing a tool\'s key again turns it off', async () => {
+    await activate(kpage, 'element'); await sleep(500);
+    await kpage.mouse.move(700, 600);
+    await press('KeyM'); eq(await activeTab(), 'measure');
+    await press('KeyM'); eq(await exists(), false, 'Alt+M twice: off');
+  });
+  await t('K4. the mode bar shows each tool\'s key in its tooltip', async () => {
+    await activate(kpage, 'element'); await sleep(500);
+    const titles = await kpage.evaluate(() => Object.fromEntries(Array.from(document.querySelector('linklens-root').shadowRoot.querySelectorAll('.indicator [data-m]')).map((b) => [b.dataset.m, b.title])));
+    eq(titles.element, 'Text Picker (Alt+E)'); eq(titles.textutils, 'Text Utils (Alt+U)'); eq(titles.seo, 'SEO Analyzer (Alt+O)'); eq(titles.measure, 'Dimensions (Alt+M)');
+    eq(titles.images, 'Inspect Images & Text (Alt+I)'); eq(titles.card, 'Card Extractor (Alt+K)'); eq(titles.text, 'Selected Text (Alt+T)'); eq(titles.section, 'Section Extractor (Alt+S)'); eq(titles.screenshot, 'Screenshot (Alt+Shift+S)');
+  });
+  await t('K5. SEO panel: [ and ] switch tabs, / jumps to the search box, R re-reads the page', async () => {
+    await kpage.mouse.move(700, 600);
+    await press('KeyO'); await sleep(500);
+    const tabOn = () => kpage.evaluate(() => document.querySelector('linklens-root').shadowRoot.querySelector('.seo-tab.on').dataset.tab);
+    const b = await (await kui('.seo-tab[data-tab="overview"]')).boundingBox(); await kpage.mouse.click(b.x + b.width / 2, b.y + b.height / 2); await sleep(300); // focus is now inside the panel
+    eq(await tabOn(), 'overview');
+    await kpage.keyboard.press(']'); await sleep(300); eq(await tabOn(), 'headings');
+    await kpage.keyboard.press(']'); await sleep(300); eq(await tabOn(), 'status');
+    await kpage.keyboard.press('['); await sleep(300); eq(await tabOn(), 'headings');
+    await kpage.keyboard.press('['); await kpage.keyboard.press('['); await sleep(300); eq(await tabOn(), 'resources', 'wraps around');
+    const l = await (await kui('.seo-tab[data-tab="links"]')).boundingBox(); await kpage.mouse.click(l.x + l.width / 2, l.y + l.height / 2); await sleep(300);
+    await kpage.keyboard.press('/'); await sleep(200);
+    eq(await kpage.evaluate(() => document.querySelector('linklens-root').shadowRoot.activeElement.className), 'seo-search', '/ focuses the search box');
+    await kpage.keyboard.type('docs'); await sleep(200);
+    eq(await kpage.evaluate(() => document.querySelector('linklens-root').shadowRoot.activeElement.value), 'docs', 'and typing goes into it (the keys are not stolen)');
+    await kpage.keyboard.press('Escape'); await sleep(200); await kpage.keyboard.press('Escape'); await sleep(200); await kpage.keyboard.press('Escape'); await sleep(300); // clears the search, leaves the box, then closes
+    eq(await exists(), false);
+  });
+  await t('K6. Settings lists every tool\'s shortcut (from the same table) and says how to use them from anywhere', async () => {
+    const op = await browser.newPage(); await op.setViewport({ width: 1240, height: 900 });
+    await op.goto(`chrome-extension://${extId}/options/options.html`); await op.waitForSelector('#keysTools li');
+    const tools = await op.$$eval('#keysTools li', (e) => e.map((x) => x.innerText.replace(/\s+/g, ' ').trim()));
+    eq(tools.length, 9);
+    for (const want of ['Text Picker Alt E', 'Text Utils Alt U', 'Screenshot Alt Shift S', 'SEO Analyzer Alt O', 'Inspect Images & Text Alt I', 'Dimensions Alt M', 'Card Extractor Alt K', 'Section Extractor Alt S', 'Selected Text Alt T']) ok(tools.some((x) => x.startsWith(want)), 'missing: ' + want + ' in ' + tools.join(' | '));
+    ok((await op.$$eval('#keysTools li em', (e) => e.length)) === 3, 'three of them work from anywhere out of the box');
+    const extra = await op.$eval('#keysExtra', (e) => e.innerText.replace(/\s+/g, ' '));
+    ok(/Alt C/.test(extra) && /Esc/.test(extra) && /\[/.test(extra) && /\//.test(extra), extra);
+    ok(/chrome:\/\/extensions\/shortcuts/.test(await op.$eval('.hint', (e) => e.textContent)), 'tells you where to assign more');
+    await op.close();
+  });
+  await t('K7. the popup shows every tool\'s shortcut on its card, and the Shortcuts sheet lists them all', async () => {
+    const pp = await browser.newPage(); await pp.setViewport({ width: 680, height: 900 });
+    await pp.goto(`chrome-extension://${extId}/popup/popup.html`); await pp.waitForSelector('.action');
+    const cards = await pp.$$eval('.action', (els) => Object.fromEntries(els.map((e) => [e.querySelector('.a-title').textContent, (e.querySelector('.a-kbd') || {}).textContent || ''])));
+    eq(cards['Text Picker'], 'AltE'); eq(cards['Text Utils'], 'AltU'); eq(cards['Screenshot'], 'AltShiftS'); eq(cards['SEO Analyzer'], 'AltO');
+    eq(cards['Inspect Images & Text'], 'AltI'); eq(cards['Dimensions'], 'AltM'); eq(cards['Card Extractor'], 'AltK'); eq(cards['Section Extractor'], 'AltS'); eq(cards['Selected Text'], 'AltT');
+    await pp.click('[data-s="shortcuts"]'); await sleep(300);
+    const sheet = await pp.$eval('#sheet', (e) => e.innerText.replace(/\s+/g, ' '));
+    for (const w of ['Text Picker', 'Text Utils', 'SEO Analyzer', 'Inspect Images & Text', 'Dimensions', 'Card Extractor', 'Selected Text']) ok(sheet.includes(w), w + ' in the sheet');
+    await pp.close();
+  });
+  await kpage.close();
+}
+
 console.log('\nTest Q — Screenshot quality: the exported image is the captured image, pixel for pixel');
 {
   const qServerHits = [];
@@ -1859,7 +2194,7 @@ await t('popup renders actions, status, activity and has no console errors', asy
   await helper.waitForSelector('.action');
   eq((await helper.$$('.action')).length, 9);
   ok(/Text Utils/.test(await helper.$eval('.action[data-mode="textutils"]', (e) => e.textContent)), 'Text Utils card');
-  ok(await helper.$eval('.welcome h1', (e) => e.textContent.includes('Hover. Discover. Copy.')));
+  ok(await helper.$eval('.greet h1', (e) => e.textContent.includes('Hover. Discover. Copy.')));
   ok((await helper.$$('#activity li')).length >= 1, 'activity lists recent copies');
   const fit = await helper.evaluate(() => {
     const body = document.body.getBoundingClientRect();
@@ -1867,7 +2202,7 @@ await t('popup renders actions, status, activity and has no console errors', asy
     const out = [...document.querySelectorAll('.action, .segmented button, .status .cell')].filter((e) => e.getBoundingClientRect().right > body.right - 8 || e.scrollWidth > e.clientWidth + 1).map((e) => e.className + ':' + (e.textContent || '').trim().slice(0, 20));
     return { mainOverflow: main.scrollWidth - main.clientWidth, out, width: Math.round(body.width) };
   });
-  eq(fit.width, 440);
+  eq(fit.width, 680);
   ok(fit.mainOverflow <= 0, 'no horizontal scrolling in the popup: ' + fit.mainOverflow);
   ok(fit.out.length === 0, 'nothing is clipped at the popup edge: ' + JSON.stringify(fit.out));
   await helper.screenshot({ path: join(tmp, 'popup.png') });

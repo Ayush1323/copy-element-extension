@@ -5,7 +5,9 @@ const area = () => chrome.storage.local;
 
 export async function getSettings() {
   const res = await area().get(STORAGE_KEYS.SETTINGS);
-  return { ...DEFAULT_SETTINGS, ...(res[STORAGE_KEYS.SETTINGS] || {}) };
+  const stored = { ...(res[STORAGE_KEYS.SETTINGS] || {}) };
+  if (/^#(2563eb|637545)$/i.test(stored.highlightColor || '')) delete stored.highlightColor; // the colours that used to be the default: now "follow the theme"
+  return { ...DEFAULT_SETTINGS, ...stored };
 }
 
 export async function saveSettings(patch) {

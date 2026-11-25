@@ -19,6 +19,7 @@ import { screenshotMode } from '../modes/screenshot-mode.js';
 import { textUtilsMode } from '../modes/textutils-mode.js';
 import { measureMode } from '../modes/measure-mode.js';
 import { seoMode } from '../modes/seo-mode.js';
+import { toolForEvent } from '../../shared/shortcuts.js';
 import { createShotSession } from '../screenshot/shot-session.js';
 import { createShadowUI } from '../ui/shadow-root-ui.js';
 import { createHighlight } from '../ui/selection-highlight.js';
@@ -79,6 +80,12 @@ export function createPickerController() {
   const hoverOn = () => !!mode && def().hover;
 
   /* ---------------- lifecycle ---------------- */
+
+  function applyUiTheme() {
+    if (!ui) return;
+    ui.setTheme(settings.theme);
+    ui.setAccent(settings.highlightColor);
+  }
 
   async function ensureSettings() {
     try { settings = await getSettings(); } catch (_) { /* keep defaults */ }
@@ -234,12 +241,12 @@ export function createPickerController() {
       if (!ui) buildUI();
       else { parts.highlight.hide(); parts.toolbar.hide(); }
       await settingsReady;
-      ui.setAccent(settings.highlightColor);
+      applyUiTheme();
       attach();
       if (!unsubStorage) {
         unsubStorage = onStorageChange(async () => {
           await ensureSettings();
-          if (ui) { ui.setAccent(settings.highlightColor); renderHover(); }
+          if (ui) { applyUiTheme(); renderHover(); }
         });
       }
       if (parts.indicator) { if (mode === MODES.SCREENSHOT) parts.indicator.hide(); else parts.indicator.show(mode); }
@@ -814,7 +821,11 @@ export function createPickerController() {
         return;
       }
     }
-    if ((mode === MODES.TEXTUTILS || mode === MODES.SEO) && ui.owns(e)) return; // typing in the Text Utils box: the panel handles its own keys
+    if ((mode === MODES.TEXTUTILS || mode === MODES.SEO) && ui.owns(e)) { // typing in a panel: it handles its own keys, but a tool key still switches tools
+      const tool = toolForEvent(e);
+      if (tool && !(mode === MODES.TEXTUTILS && tool.mode === MODES.TEXTUTILS)) { e.preventDefault(); e.stopImmediatePropagation(); setMode(mode === tool.mode ? null : tool.mode); }
+      return;
+    }
     if (e.key === 'Escape') {
       if (parts.preview.isOpen()) { parts.preview.close(); e.preventDefault(); e.stopImmediatePropagation(); return; }
       e.preventDefault();
@@ -824,8 +835,8 @@ export function createPickerController() {
     }
     if (e.altKey && !e.ctrlKey && !e.metaKey) {
       if (e.code === 'KeyC' && (hoverOn() || mode === MODES.IMAGES || mode === MODES.MEASURE)) { e.preventDefault(); copyHovered(); return; }
-      if (e.code === 'KeyE') { e.preventDefault(); setMode(MODES.ELEMENT); return; }
-      if (e.code === 'KeyS') { e.preventDefault(); setMode(MODES.SECTION); return; }
+      const tool = toolForEvent(e);
+      if (tool) { e.preventDefault(); e.stopImmediatePropagation(); setMode(mode === tool.mode ? null : tool.mode); return; }
       if ((e.key === 'ArrowUp' || e.key === 'ArrowDown') && hoverOn() && hovered) {
         e.preventDefault();
         const d = e.key === 'ArrowUp' ? 1 : -1;

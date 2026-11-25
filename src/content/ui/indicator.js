@@ -1,21 +1,21 @@
 import { h } from './shadow-root-ui.js';
 import { icon } from '../../shared/icons.js';
 import { MODE_META } from '../../shared/constants.js';
+import { toolByMode } from '../../shared/shortcuts.js';
+
+const TABS = [
+  ['element', 'pointer', 'Element'], ['card', 'card', 'Card'], ['section', 'section', 'Section'], ['text', 'text', 'Text'], ['images', 'image', 'Inspect'],
+  ['screenshot', 'camera', 'Screenshot'], ['textutils', 'textutils', 'Utils'], ['measure', 'measure', 'Measure'], ['seo', 'seo', 'SEO'],
+];
 
 export function createIndicator(ui, { onMode, onExit }) {
+  const tabs = TABS.map(([mode, ic, short]) => {
+    const t = toolByMode(mode);
+    return `<button data-m="${mode}" title="${t.label.replace(/&/g, '&amp;')} (${t.keys.join('+')})">${icon(ic, 13)}<span>${short}</span></button>`;
+  }).join('');
   const el = h('div', 'indicator', `
     <span class="dot"></span><span class="ind-title">LinkLens</span>
-    <div class="seg" role="tablist">
-      <button data-m="element" title="Element Picker (Alt+E)">${icon('pointer', 13)}<span>Element</span></button>
-      <button data-m="card" title="Card Extractor">${icon('card', 13)}<span>Card</span></button>
-      <button data-m="section" title="Section Extractor (Alt+S)">${icon('section', 13)}<span>Section</span></button>
-      <button data-m="text" title="Selected Text">${icon('text', 13)}<span>Text</span></button>
-      <button data-m="images" title="Inspect images, fonts and colors">${icon('image', 13)}<span>Inspect</span></button>
-      <button data-m="screenshot" title="Screenshot (Alt+Shift+S)">${icon('camera', 13)}<span>Screenshot</span></button>
-      <button data-m="textutils" title="Text Utils: case, spaces, find &amp; replace">${icon('textutils', 13)}<span>Utils</span></button>
-      <button data-m="measure" title="Dimensions: size, spacing and gaps">${icon('measure', 13)}<span>Measure</span></button>
-      <button data-m="seo" title="SEO: meta, headings, links, images, schema and more">${icon('seo', 13)}<span>SEO</span></button>
-    </div>
+    <div class="seg" role="tablist">${tabs}</div>
     <button class="ind-exit" title="Exit (Esc)">${icon('x', 12)}<span>Exit</span><kbd>Esc</kbd></button>`);
   el.hidden = true;
   ui.layer.appendChild(el);

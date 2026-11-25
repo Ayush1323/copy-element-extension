@@ -25,6 +25,7 @@ Everything runs locally in the browser: no backend, no analytics, no external AP
 | **Text Utils** | A small floating panel you can drag anywhere on the page: **Upper Case**, **Lower Case**, **Capitalize First Letter** (every sentence), **Capitalize Each Word**, **Remove Extra Spaces**, **Replace Space With "-"** and **"_"**, and **Find & Replace** (plain text, match case, or regex with `$1` groups). Select part of the text to change only that part; undo / redo / clear, live word and character count, one-click **Copy**, Alt-key shortcuts (the shortcut list is in the panel). Opens with the text you had selected on the page. Nothing leaves the page and the text is never stored, only where you left the panel. |
 | **Dimensions** | Hover any element to see its box model drawn like DevTools: **margin** (orange), **border**, **padding** (green) and content (blue), each with its number, the size label and an info card (size, margin, border, padding, gap, display, position). **Flex and grid gaps** are drawn between the items with their values (row and column separately). **Click to pin** an element, then hover another one to see the **distance** between them (gap, or the distance to every side when one is inside the other). `Shift` shows the distance to the parent, `Alt+↑ / ↓` measures the parent / child, `Alt+C` copies the measurements as CSS. The page itself is paused while measuring (no clicks, no navigation); `Esc` leaves. |
 | **SEO Analyzer** | A draggable panel with a 0–100 **score**, a "fix first" list and eight tabs. **Overview**: title and description with length gauges, URL, canonical, meta robots, language, viewport, hreflang, favicon and live **Core Web Vitals** (LCP, INP, CLS, FCP, TTFB). **Headings**: the full H1–H6 outline with problems (no or several H1, skipped levels, empty headings), copy as Markdown. **Status**: HTTP status, indexability verdict with reasons, timing and the real response headers (X-Robots-Tag, security headers). **Links**: internal / external / nofollow / sponsored, weak anchor text, an optional **status check** of every link, copy as CSV. **Images**: alt text, oversized images, missing width / height, file sizes, thumbnails. **Schema**: JSON-LD (with missing-property warnings), microdata and RDFa. **Social**: Facebook and X previews, the real og:image size and every Open Graph / Twitter tag. **Resources**: requests, transfer size, third parties and render-blocking files. The footer shows the H1–H6, link and image counts and opens **robots.txt** (is this page allowed for `*` and Googlebot, highlighted rules) and the **sitemap** (is this page listed). Click any row to scroll to and outline the element on the page. Everything is read locally; the only requests are the ones you start (headers, robots.txt, sitemap, link check). Checking links on other sites needs the optional all-sites permission. |
+| **Themes** | A simple, clean look: white and light-neutral surfaces, one vibrant colour per theme, and the same calm colour family on every tool card. Settings → Appearance has eight themes (Indigo, Ocean, Mint, Emerald, Teal, Violet, Rose, Moss), each shown as a live preview card. Picking one recolours the popup, the settings page, the toolbar icon and badge, and every on-page tool **instantly**, even on pages that are already open. The highlight colour follows the theme unless you choose a custom one. The Settings page has a side navigation (Copying, Interface, History & privacy, Shortcuts, Appearance, Reset). |
 | **Floating toolbar** | Compact handle with the element type; hover it for *Copy Text · Copy Element · Copy Card · Copy Section · Preview*. Always clamped inside the viewport. |
 | **Preview panel** | Structured preview with character/block counts, per-part copy, *Copy All / Plain / Rich / Copy Again*. |
 | **Clipboard** | Plain text or sanitized Rich HTML (`text/html` + `text/plain` in one `ClipboardItem`), with `writeText` and `execCommand` fallbacks. |
@@ -64,17 +65,26 @@ stays on the previous element for ~0.3 s so the pointer can reach it.
 
 ### Keyboard shortcuts
 
-| Shortcut | Action |
-|---|---|
-| `Alt+E` | Activate / toggle Element Picker |
-| `Alt+S` | Activate / toggle Section Extractor |
-| `Alt+C` | Copy the hovered element |
-| `Alt+↑ / ↓` | Select parent / child |
-| `Esc` | Exit current mode |
+Every tool has a shortcut (defined once in `src/shared/shortcuts.js`; the popup, the on-page mode bar, Settings and the manifest all read it).
 
-Change them at **`chrome://extensions/shortcuts`** (extension commands: *Activate Element Picker*,
-*Copy hovered element*, *Activate Section Extractor*). On Windows `Alt+E` can collide with Chrome's own menu
-accelerator — rebind it there if it does not fire.
+| Tool | Shortcut | |
+|---|---|---|
+| Text Picker | `Alt+E` | works from anywhere |
+| Text Utils | `Alt+U` | |
+| Screenshot | `Alt+Shift+S` | works from anywhere |
+| SEO Analyzer | `Alt+O` | |
+| Inspect Images & Text | `Alt+I` | |
+| Dimensions | `Alt+M` | |
+| Card Extractor | `Alt+K` | |
+| Section Extractor | `Alt+S` | works from anywhere |
+| Selected Text | `Alt+T` | |
+
+While any tool is on: **every** shortcut above switches straight to that tool (press the same one again to turn it off), `Alt+C` copies the hovered element / image / colour,
+`Alt+↑ / ↓` selects the parent / child, `Esc` exits. In the SEO panel: `[` / `]` switch tabs, `/` jumps to the search box, `R` re-reads the page.
+
+Chrome lets an extension suggest only **four** default global shortcuts (here `Alt+E`, `Alt+S`, `Alt+Shift+S`, `Alt+C`). The other tools have a command too, so you can give any of
+them a key at **`chrome://extensions/shortcuts`** and start them from anywhere. Letters were chosen to avoid browser keys (`Alt+D` address bar, `Alt+F` menu, `Alt+1…8` tabs).
+On Windows `Alt+E` can collide with Chrome's own menu accelerator — rebind it there if it does not fire.
 
 ## Architecture
 

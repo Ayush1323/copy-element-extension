@@ -1,5 +1,6 @@
 import css from '../styles/injected.css';
 import { HOST_TAG } from '../../shared/constants.js';
+import { applyTheme } from '../../shared/themes.js';
 
 /**
  * One isolated closed Shadow DOM host that holds every piece of extension UI.
@@ -31,9 +32,12 @@ export function createShadowUI() {
       host.remove();
       attached = false;
     },
+    /** A custom highlight colour; anything else means "follow the theme". */
     setAccent(color) {
       if (/^#[0-9a-f]{3,8}$/i.test(color)) layer.style.setProperty('--accent', color);
+      else layer.style.removeProperty('--accent');
     },
+    setTheme(id) { applyTheme(layer, id); },
     /** True if a DOM event came from inside our UI (works with a closed shadow root). */
     owns(event) {
       if (event.target === host) return true;

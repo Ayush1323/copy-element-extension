@@ -40,6 +40,7 @@ export function createSeoPanel(ui, { onCopy, onClose, onReveal, onHover, loadPos
     <div class="seo-drawer" hidden></div>`);
   el.setAttribute('role', 'dialog');
   el.setAttribute('aria-label', 'SEO');
+  el.tabIndex = -1;
   el.hidden = true;
   ui.layer.appendChild(el);
 
@@ -86,6 +87,12 @@ export function createSeoPanel(ui, { onCopy, onClose, onReveal, onHover, loadPos
 
   /* ------------------------------ tabs ------------------------------ */
 
+  /** Rendering rebuilds the tab bar, which would drop the keyboard focus: put it back on the active tab. */
+  function focusTab() {
+    const t = tabsEl.querySelector('.seo-tab.on');
+    if (t) { try { t.focus({ preventScroll: true }); t.scrollIntoView({ block: 'nearest', inline: 'nearest' }); } catch (_) { /* gone */ } }
+  }
+
   const tabLevel = (id) => worst(checks.filter((c) => c.tab === id).map((c) => c.level));
   const tabCount = (id) => {
     if (!report) return '';
@@ -122,9 +129,11 @@ export function createSeoPanel(ui, { onCopy, onClose, onReveal, onHover, loadPos
   function render({ keepScroll = true } = {}) {
     if (!report) return;
     const top = keepScroll ? body.scrollTop : 0;
+    const tabFocus = tabsEl.contains(el.getRootNode().activeElement); // a redraw (e.g. new web-vital numbers) must not drop the keyboard focus
     reg = [];
     renderHeader();
     renderTabs();
+    if (tabFocus) focusTab();
     renderFoot();
     body.innerHTML = ({ overview, headings, status, links, images, schema, social, resourcesTab })[tab === 'resources' ? 'resourcesTab' : tab]();
     body.scrollTop = top;
@@ -545,7 +554,7 @@ export function createSeoPanel(ui, { onCopy, onClose, onReveal, onHover, loadPos
   el.addEventListener('click', async (e) => {
     const t = e.target;
     const tabBtn = t.closest('[data-tab]');
-    if (tabBtn) { tab = tabBtn.dataset.tab; closeDrawer(); render({ keepScroll: false }); body.scrollTop = 0; return; }
+    if (tabBtn) { tab = tabBtn.dataset.tab; closeDrawer(); render({ keepScroll: false }); body.scrollTop = 0; focusTab(); return; }
     const cp = t.closest('[data-copy]');
     if (cp) { const ok = await onCopy(reg[Number(cp.dataset.copy)]); if (ok) pulse(cp); return; }
     const dr = t.closest('[data-drawer]');
@@ -588,6 +597,16 @@ export function createSeoPanel(ui, { onCopy, onClose, onReveal, onHover, loadPos
 
   el.addEventListener('mouseover', (e) => { const r = e.target.closest && e.target.closest('[data-r]'); if (r) onHover(reg[Number(r.dataset.r)]); });
   el.addEventListener('mouseout', (e) => { const r = e.target.closest && e.target.closest('[data-r]'); if (r && !(e.relatedTarget && r.contains(e.relatedTarget))) onHover(null); });
+
+  // keyboard: [ and ] switch tabs, / searches the list, R re-reads the page (only when you are not typing in a box)
+  el.addEventListener('keydown', (e) => {
+    if (e.ctrlKey || e.metaKey || e.altKey || (e.target.matches && e.target.matches('input, textarea'))) return;
+    const ids = TABS.map(([id]) => id);
+    const go = (id) => { tab = id; closeDrawer(); render({ keepScroll: false }); body.scrollTop = 0; focusTab(); };
+    if (e.key === '[' || e.key === ']') { e.preventDefault(); go(ids[(ids.indexOf(tab) + (e.key === ']' ? 1 : ids.length - 1)) % ids.length]); }
+    else if (e.key === '/') { const s = body.querySelector('.seo-search'); if (s) { e.preventDefault(); s.focus(); s.select(); } }
+    else if (e.key === 'r' || e.key === 'R') { e.preventDefault(); collect(); if (tab === 'status') headers = null; render(); }
+  });
 
   el.addEventListener('keydown', (e) => {
     if (e.key !== 'Escape') return;
@@ -647,6 +666,7 @@ export function createSeoPanel(ui, { onCopy, onClose, onReveal, onHover, loadPos
         if (!open) return;
         place(saved && Number.isFinite(saved.x) && Number.isFinite(saved.y) ? saved : defaultPos());
         el.style.visibility = '';
+        try { el.focus({ preventScroll: true }); } catch (_) { /* not focusable yet */ }
         window.addEventListener('resize', onResize, { passive: true });
       }
     },

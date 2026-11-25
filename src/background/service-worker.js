@@ -1,15 +1,33 @@
 import { MSG } from '../shared/message-types.js';
 import { MODES } from '../shared/constants.js';
 import { isRestrictedUrl } from '../shared/helpers.js';
-import { STORAGE_KEYS } from '../shared/constants.js';
+import { STORAGE_KEYS, DEFAULT_SETTINGS } from '../shared/constants.js';
+import { themeById, DEFAULT_THEME } from '../shared/themes.js';
+import { toolByCommand } from '../shared/shortcuts.js';
 
 const CONTENT_FILE = 'content/index.js';
+
+async function currentTheme() {
+  try {
+    const res = await chrome.storage.local.get(STORAGE_KEYS.SETTINGS);
+    return themeById((res[STORAGE_KEYS.SETTINGS] && res[STORAGE_KEYS.SETTINGS].theme) || DEFAULT_SETTINGS.theme);
+  } catch (_) { return themeById(DEFAULT_THEME); }
+}
 
 async function setBadge(tabId, mode) {
   try {
     await chrome.action.setBadgeText({ tabId, text: mode ? 'ON' : '' });
-    if (mode) await chrome.action.setBadgeBackgroundColor({ tabId, color: '#2563EB' });
+    if (mode) await chrome.action.setBadgeBackgroundColor({ tabId, color: (await currentTheme()).primary });
   } catch (_) { /* tab gone */ }
+}
+
+/** The toolbar icon is one PNG set per theme (see scripts/make-icons.mjs). */
+async function syncThemeIcon() {
+  try {
+    const t = await currentTheme();
+    const path = Object.fromEntries([16, 32, 48, 128].map((s) => [s, `icons/themes/${t.id}/icon${s}.png`]));
+    await chrome.action.setIcon({ path });
+  } catch (_) { /* icons unavailable: the manifest's icons stay */ }
 }
 
 /** Latest activation per tab, so a slow follow-up for the sub-frames never overrides a newer toggle. */
@@ -128,11 +146,12 @@ async function previewToken() {
 }
 
 syncPreviewRule();
-chrome.runtime.onInstalled.addListener(() => syncPreviewRule({ force: true }));
-chrome.runtime.onStartup.addListener(() => syncPreviewRule());
+syncThemeIcon();
+chrome.runtime.onInstalled.addListener(() => { syncPreviewRule({ force: true }); syncThemeIcon(); });
+chrome.runtime.onStartup.addListener(() => { syncPreviewRule(); syncThemeIcon(); });
 chrome.permissions.onAdded.addListener(() => syncPreviewRule());
 chrome.permissions.onRemoved.addListener(() => syncPreviewRule());
-chrome.storage.onChanged.addListener((changes, area) => { if (area === 'local' && changes[STORAGE_KEYS.SETTINGS]) syncPreviewRule(); });
+chrome.storage.onChanged.addListener((changes, area) => { if (area === 'local' && changes[STORAGE_KEYS.SETTINGS]) { syncPreviewRule(); syncThemeIcon(); } });
 
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (!msg) return false;
@@ -177,9 +196,8 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 chrome.commands.onCommand.addListener(async (command) => {
   const [tab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
   if (!tab || tab.id == null) return;
-  if (command === 'activate-element-picker') await activate(tab.id, MODES.ELEMENT);
-  else if (command === 'activate-section-picker') await activate(tab.id, MODES.SECTION);
-  else if (command === 'capture-screenshot') await activate(tab.id, MODES.SCREENSHOT);
+  const tool = toolByCommand(command); // every tool has a command (see src/shared/shortcuts.js)
+  if (tool) await activate(tab.id, tool.mode);
   else if (command === 'copy-hovered') {
     try { await chrome.tabs.sendMessage(tab.id, { type: MSG.COPY_HOVERED }); } catch (_) { /* picker not active */ }
   }

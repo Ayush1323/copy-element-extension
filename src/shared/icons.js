@@ -1,4 +1,3 @@
-import { logoSvg } from './logo.js';
 
 // Original inline SVG icons (24x24, stroke based, Lucide-style geometry).
 const P = {
@@ -28,6 +27,8 @@ const P = {
   seo: '<circle cx="10.5" cy="10.5" r="6.5"/><path d="M15.4 15.4L21 21"/><path d="M8 12.5v-2M10.5 12.5v-4.5M13 12.5v-3"/>',
   refresh: '<path d="M20 11a8 8 0 00-14.4-4.2L4 8.5"/><path d="M4 4v4.5h4.5M4 13a8 8 0 0014.4 4.2L20 15.5"/><path d="M20 20v-4.5h-4.5"/>',
   external: '<path d="M14 4h6v6M20 4l-9 9"/><path d="M18 14v4.5a1.5 1.5 0 01-1.5 1.5h-11A1.5 1.5 0 014 18.5v-11A1.5 1.5 0 015.5 6H10"/>',
+  palette: '<path d="M12 3a9 9 0 100 18c1.2 0 1.9-.9 1.5-2-.4-1.1.3-2.2 1.5-2.2H17a4 4 0 004-4c0-5-4-9.8-9-9.8z"/><circle cx="7.6" cy="11.4" r="1.1"/><circle cx="10.6" cy="7.2" r="1.1"/><circle cx="15.2" cy="7.6" r="1.1"/>',
+  search: '<circle cx="11" cy="11" r="6.5"/><path d="M16 16l4.5 4.5"/>',
   camera: '<path d="M4 8h3l1.5-2.5h7L17 8h3a1 1 0 011 1v9a1 1 0 01-1 1H4a1 1 0 01-1-1V9a1 1 0 011-1z"/><circle cx="12" cy="13" r="3.5"/>',
   pencil: '<path d="M4 20l1-4.5L16.5 4a2.1 2.1 0 013 3L8 18.5z"/><path d="M14.5 6l3 3"/>',
   arrow: '<path d="M5 19L19 5M9 5h10v10"/>',
@@ -56,5 +57,7 @@ export function icon(name, size = 18, extra = '') {
   return `<svg class="ic ${extra}" width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">${P[name] || ''}</svg>`;
 }
 
-export const LOGO_SVG = logoSvg({ size: 28, id: 'll' });
-export const LOGO_SVG_LG = logoSvg({ size: 40, id: 'llg' });
+/** The LinkLens mark: a tile in the theme colour with the white lens + pointer (public/icons/glyph.png) cut into it. Sized by --lg. */
+export const logoMark = (size = 36) => `<span class="logo-mark" style="--lg:${size}px" aria-hidden="true"></span>`;
+export const LOGO_SVG = logoMark(36);
+export const LOGO_SVG_LG = logoMark(48);

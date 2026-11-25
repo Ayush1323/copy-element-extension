@@ -62,6 +62,24 @@
         "mac": "Alt+Shift+S"
       },
       "description": "Capture a screenshot of this page"
+    },
+    "activate-text-utils": {
+      "description": "Open Text Utils"
+    },
+    "activate-seo": {
+      "description": "Open the SEO Analyzer"
+    },
+    "activate-images": {
+      "description": "Inspect images, fonts and colours"
+    },
+    "activate-measure": {
+      "description": "Measure sizes, spacing and gaps (Dimensions)"
+    },
+    "activate-card-extractor": {
+      "description": "Activate Card Extractor"
+    },
+    "activate-selected-text": {
+      "description": "Activate Selected Text"
     }
   },
   "content_security_policy": {

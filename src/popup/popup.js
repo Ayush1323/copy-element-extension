@@ -1,5 +1,7 @@
 import { MSG } from '../shared/message-types.js';
 import { MODES } from '../shared/constants.js';
+import { applyTheme } from '../shared/themes.js';
+import { TOOLS, EXTRA, shortcutOf } from '../shared/shortcuts.js';
 import { getSettings, saveSettings, getHistory, removeHistory, clearHistory, getLast, onStorageChange } from '../shared/storage.js';
 import { domainOf, isRestrictedUrl, timeAgo, escapeHtml } from '../shared/helpers.js';
 import { icon } from '../shared/icons.js';
@@ -12,17 +14,17 @@ const $ = (s) => document.querySelector(s);
 const state = { tab: null, restricted: false, mode: null, settings: null, history: [], last: null, busy: false };
 
 const ACTIONS = [
-  // the three everyday tools: big cards on one line
-  { id: MODES.ELEMENT, title: 'Text Picker', desc: 'Hover & copy any text', iconName: 'pointer', hint: 'Alt+E', featured: true },
-  { id: MODES.TEXTUTILS, title: 'Text Utils', desc: 'Case, spaces & find / replace', iconName: 'textutils', hint: '', featured: true },
-  { id: MODES.SCREENSHOT, title: 'Screenshot', desc: 'Capture & annotate on the page', iconName: 'camera', hint: 'Alt+Shift+S', featured: true },
+  // the four everyday tools: big cards on one line
+  { id: MODES.ELEMENT, title: 'Text Picker', desc: 'Hover & copy any text', iconName: 'pointer', hint: shortcutOf(MODES.ELEMENT), featured: true },
+  { id: MODES.TEXTUTILS, title: 'Text Utils', desc: 'Case, spaces & find / replace', iconName: 'textutils', hint: shortcutOf(MODES.TEXTUTILS), featured: true },
+  { id: MODES.SCREENSHOT, title: 'Screenshot', desc: 'Capture & annotate the page', iconName: 'camera', hint: shortcutOf(MODES.SCREENSHOT), featured: true },
+  { id: MODES.SEO, title: 'SEO Analyzer', desc: 'Meta, links, images & schema', iconName: 'seo', hint: shortcutOf(MODES.SEO), featured: true },
   // more tools
-  { id: MODES.SEO, title: 'SEO Analyzer', desc: 'Meta, headings, links, images & schema', iconName: 'seo', hint: '' },
-  { id: MODES.MEASURE, title: 'Dimensions', desc: 'Size, spacing & gaps between elements', iconName: 'measure', hint: '' },
-  { id: MODES.IMAGES, title: 'Inspect Images & Text', desc: 'Image size & source, fonts and colors', iconName: 'image', hint: '' },
-  { id: MODES.CARD, title: 'Card Extractor', desc: 'Grab a whole card', iconName: 'card', hint: '' },
-  { id: MODES.SECTION, title: 'Section Extractor', desc: 'Copy a full section', iconName: 'section', hint: 'Alt+S' },
-  { id: MODES.TEXT, title: 'Selected Text', desc: 'Copy highlighted text', iconName: 'text', hint: '' },
+  { id: MODES.IMAGES, title: 'Inspect Images & Text', desc: 'Image size & source, fonts and colors', iconName: 'image', hint: shortcutOf(MODES.IMAGES) },
+  { id: MODES.MEASURE, title: 'Dimensions', desc: 'Size, spacing & gaps between elements', iconName: 'measure', hint: shortcutOf(MODES.MEASURE) },
+  { id: MODES.CARD, title: 'Card Extractor', desc: 'Grab a whole card', iconName: 'card', hint: shortcutOf(MODES.CARD) },
+  { id: MODES.SECTION, title: 'Section Extractor', desc: 'Copy a full section', iconName: 'section', hint: shortcutOf(MODES.SECTION) },
+  { id: MODES.TEXT, title: 'Selected Text', desc: 'Copy highlighted text', iconName: 'text', hint: shortcutOf(MODES.TEXT) },
 ];
 
 function toast(msg, ok = true) {
@@ -68,6 +70,20 @@ function renderActions() {
   for (const a of ACTIONS) {
     (a.featured ? big : more).appendChild(renderActionCard({ ...a, active: state.mode === a.id, disabled: state.restricted || state.busy, onClick: activate }));
   }
+}
+
+/** Arrow keys move between the tool cards (two columns). */
+function wireKeys() {
+  document.addEventListener('keydown', (e) => {
+    const card = e.target && e.target.closest && e.target.closest('.action');
+    if (!card || !/^Arrow/.test(e.key)) return;
+    const list = [...document.querySelectorAll('.action')].filter((c) => !c.disabled);
+    const i = list.indexOf(card);
+    const next = e.key === 'ArrowRight' ? i + 1 : e.key === 'ArrowLeft' ? i - 1 : e.key === 'ArrowDown' ? i + 2 : i - 2;
+    e.preventDefault();
+    const target = list[Math.min(Math.max(next, 0), list.length - 1)];
+    if (target) target.focus();
+  });
 }
 
 function renderFormat() {
@@ -126,16 +142,12 @@ function renderFooter() {
 
 function openSheet(kind) {
   const sheet = $('#sheet');
-  const kb = (a) => `<kbd>${a}</kbd>`;
+  const kb = (a) => `<kbd>${escapeHtml(a)}</kbd>`;
   const body = kind === 'shortcuts'
     ? `<h3>Keyboard shortcuts</h3>
        <ul class="rows">
-        <li><span>Activate Element Picker</span>${kb('Alt + E')}</li>
-        <li><span>Activate Section Extractor</span>${kb('Alt + S')}</li>
-        <li><span>Capture a screenshot</span>${kb('Alt + Shift + S')}</li>
-        <li><span>Copy hovered element</span>${kb('Alt + C')}</li>
-        <li><span>Select parent / child</span>${kb('Alt + ↑ / ↓')}</li>
-        <li><span>Exit current mode</span>${kb('Esc')}</li>
+        ${TOOLS.map((t) => `<li><span>${escapeHtml(t.label)}</span>${t.keys.map(kb).join('')}</li>`).join('')}
+        ${EXTRA.map((x) => `<li><span>${escapeHtml(x.label)}</span>${x.keys.map(kb).join('')}${x.keys2 ? ' / ' + x.keys2.map(kb).join('') : ''}</li>`).join('')}
        </ul>
        <button class="primary-btn" id="open-shortcuts">Customize at chrome://extensions/shortcuts</button>`
     : `<h3>Privacy</h3>
@@ -171,18 +183,21 @@ async function init() {
   // Everything the first paint needs is fetched in parallel; the page itself is never waited for.
   const [settings, history, last] = await Promise.all([getSettings(), getHistory(), getLast(), loadTab()]);
   state.settings = settings;
+  applyTheme(document.documentElement, settings.theme); // before the first paint
   state.history = history;
   state.last = last;
-  renderHeader($('#header'), { version: chrome.runtime.getManifest().version, onSettings: () => chrome.runtime.openOptionsPage() });
+  renderHeader($('#header'), { onSettings: () => chrome.runtime.openOptionsPage() });
   renderFooter();
   if (state.restricted) renderNotice('Chrome blocks extensions on this page (browser pages, the Web Store, or unsupported URLs). Open a regular website to start.');
   renderActions();
+  wireKeys();
   renderFormat();
   renderStatus();
   renderActivity();
   $('#clear-all').addEventListener('click', async () => { await clearHistory(); state.history = []; renderActivity(); });
   onStorageChange(async () => {
     [state.settings, state.history, state.last] = await Promise.all([getSettings(), getHistory(), getLast()]);
+    applyTheme(document.documentElement, state.settings.theme);
     renderFormat(); renderStatus(); renderActivity();
   });
   refreshMode();

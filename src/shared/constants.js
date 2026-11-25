@@ -1,3 +1,4 @@
+import { DEFAULT_THEME } from './themes.js';
 export const APP_NAME = 'LinkLens';
 export const TAGLINE = 'Hover. Discover. Copy.';
 export const HOST_TAG = 'linklens-root';
@@ -20,7 +21,8 @@ export const DEFAULT_SETTINGS = Object.freeze({
   defaultFormat: FORMATS.PLAIN, // 'plain' | 'rich' | 'markdown' (links as [text](url))
   historyEnabled: true,
   toolbarEnabled: true,
-  highlightColor: '#2563EB',
+  highlightColor: '', // '' = follow the theme; or a custom #RRGGBB
+  theme: DEFAULT_THEME, // see src/shared/themes.js
   showLabels: true,
   toastEnabled: true,
   linkPreviewAnySite: false, // previews of sites that forbid embedding (needs the optional all-sites permission)

@@ -94,7 +94,7 @@ export function createEditor({ base, cssW, cssH, prefs, onChange }) {
     octx.clearRect(0, 0, over.width, over.height);
     octx.setTransform(k, 0, 0, k, 0, 0);
     const u = 1 / zoom; // one screen CSS px in image units
-    const accent = getComputedStyle(stage).getPropertyValue('--accent').trim() || '#2563EB';
+    const accent = getComputedStyle(stage).getPropertyValue('--accent').trim() || '#637545';
     const outline = (a, color, dash = true) => {
       const b = bounds(a);
       octx.save();

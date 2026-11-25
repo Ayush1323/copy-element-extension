@@ -7,71 +7,88 @@
   <link rel="stylesheet" href="options.css">
 </head>
 <body>
-  <div class="page">
-    <header class="top">
-      <span class="logo" id="logo"></span>
-      <div>
-        <h1>LinkLens</h1>
-        <p>Settings · Hover. Discover. Copy.</p>
+  <div class="shell">
+    <aside class="side">
+      <div class="brand">
+        <span class="logo" id="logo"></span>
+        <div><b>LinkLens</b><span>Settings</span></div>
       </div>
-      <span class="saved" id="saved" aria-live="polite"></span>
-    </header>
+      <nav class="nav" aria-label="Settings sections">
+        <a href="#sec-copying" data-nav="sec-copying"><i data-icon="file"></i>Copying</a>
+        <a href="#sec-interface" data-nav="sec-interface"><i data-icon="settings"></i>Interface</a>
+        <a href="#sec-privacy" data-nav="sec-privacy"><i data-icon="shield"></i>History &amp; privacy</a>
+        <a href="#sec-keys" data-nav="sec-keys"><i data-icon="keyboard"></i>Shortcuts</a>
+        <a href="#sec-appearance" data-nav="sec-appearance"><i data-icon="palette"></i>Appearance</a>
+        <a href="#sec-reset" data-nav="sec-reset"><i data-icon="refresh"></i>Reset</a>
+      </nav>
+      <p class="side-foot">Everything runs locally.<br>No analytics, no servers.<br><span id="ver"></span></p>
+    </aside>
 
-    <section class="card">
-      <h2>Copying</h2>
-      <div class="row"><div class="lbl"><b>Default copy format</b><span>Used by element, card and section copies. Markdown keeps links as [text](url).</span></div>
-        <div class="seg" id="defaultFormat" data-key="defaultFormat"><button data-v="plain">Plain Text</button><button data-v="rich">Rich Text (HTML)</button><button data-v="markdown" title="Keeps links as [text](url)">Markdown</button></div></div>
-      <div class="row"><div class="lbl"><b>Default extraction behaviour</b><span>What clicking a card or section does.</span></div>
-        <div class="seg" id="extractionBehavior" data-key="extractionBehavior"><button data-v="instant">Copy instantly</button><button data-v="preview">Preview first</button></div></div>
-      <div class="row"><div class="lbl"><b>Heading style (plain text)</b><span>Plain keeps headings as simple lines; Markdown adds # prefixes.</span></div>
-        <div class="seg" id="headingStyle" data-key="headingStyle"><button data-v="plain">Plain</button><button data-v="markdown">Markdown</button></div></div>
-      <div class="row"><div class="lbl"><b>Include buttons &amp; CTAs</b><span>Add button text such as “[Read more]” to card and section copies.</span></div>
-        <label class="switch"><input type="checkbox" data-key="includeButtons"><i></i></label></div>
-    </section>
+    <main class="content">
+      <header class="hero">
+        <div>
+          <h1>Settings</h1>
+          <p>Make LinkLens work and look the way you like. Every change is saved automatically.</p>
+        </div>
+        <span class="saved" id="saved" aria-live="polite"></span>
+      </header>
 
-    <section class="card">
-      <h2>Interface</h2>
-      <div class="row"><div class="lbl"><b>Floating toolbar</b><span>Show the action toolbar next to the highlighted element.</span></div>
-        <label class="switch"><input type="checkbox" data-key="toolbarEnabled"><i></i></label></div>
-      <div class="row"><div class="lbl"><b>Element type labels</b><span>Display H2 HEADING, PARAGRAPH, CARD … on highlights.</span></div>
-        <label class="switch"><input type="checkbox" data-key="showLabels"><i></i></label></div>
-      <div class="row"><div class="lbl"><b>Link preview</b><span>Show a small live preview of where a hovered link goes. Loads the page after a short pause; sites that forbid embedding show a hint.</span></div>
-        <label class="switch"><input type="checkbox" data-key="linkPreview"><i></i></label></div>
-      <div class="row" id="row-anysite"><div class="lbl"><b>Preview sites that block embedding</b><span>Many sites (statista.com, GitHub, Google…) refuse to be shown in a preview frame. Turn this on to preview them anyway: LinkLens then relaxes frame-blocking headers <em>only</em> for the preview frame it creates, never for the pages you browse. Chrome will ask for access to all sites when you enable it; turn it off to give it back.</span></div>
-        <label class="switch"><input type="checkbox" data-key="linkPreviewAnySite" data-perm="all-sites"><i></i></label></div>
-      <div class="row"><div class="lbl"><b>Toast notifications</b><span>Confirm each successful copy on the page.</span></div>
-        <label class="switch"><input type="checkbox" data-key="toastEnabled"><i></i></label></div>
-      <div class="row"><div class="lbl"><b>Highlight colour</b><span>Outline and accent colour used on pages.</span></div>
-        <div class="colors" id="colors"></div></div>
-    </section>
+      <section class="card" id="sec-copying">
+        <header class="card-h"><span class="ci" data-icon="file"></span><div><h2>Copying</h2><p>How text is copied from a page.</p></div></header>
+        <div class="row"><div class="lbl"><b>Default copy format</b><span>Used by element, card and section copies. Markdown keeps links as [text](url).</span></div>
+          <div class="seg" id="defaultFormat" data-key="defaultFormat"><button data-v="plain">Plain Text</button><button data-v="rich">Rich Text (HTML)</button><button data-v="markdown" title="Keeps links as [text](url)">Markdown</button></div></div>
+        <div class="row"><div class="lbl"><b>Default extraction behaviour</b><span>What clicking a card or section does.</span></div>
+          <div class="seg" id="extractionBehavior" data-key="extractionBehavior"><button data-v="instant">Copy instantly</button><button data-v="preview">Preview first</button></div></div>
+        <div class="row"><div class="lbl"><b>Heading style (plain text)</b><span>Plain keeps headings as simple lines; Markdown adds # prefixes.</span></div>
+          <div class="seg" id="headingStyle" data-key="headingStyle"><button data-v="plain">Plain</button><button data-v="markdown">Markdown</button></div></div>
+        <div class="row"><div class="lbl"><b>Include buttons &amp; CTAs</b><span>Add button text such as “[Read more]” to card and section copies.</span></div>
+          <label class="switch"><input type="checkbox" data-key="includeButtons"><i></i></label></div>
+      </section>
 
-    <section class="card">
-      <h2>History &amp; privacy</h2>
-      <div class="row"><div class="lbl"><b>Keep copy history</b><span>Stores your last 25 copies locally in this browser. Never transmitted.</span></div>
-        <label class="switch"><input type="checkbox" data-key="historyEnabled"><i></i></label></div>
-      <div class="row"><div class="lbl"><b>Clear history</b><span id="histCount">—</span></div>
-        <button class="btn danger" id="clearHistory">Clear history</button></div>
-    </section>
+      <section class="card" id="sec-interface">
+        <header class="card-h"><span class="ci" data-icon="settings"></span><div><h2>Interface</h2><p>What you see on the page while a tool is active.</p></div></header>
+        <div class="row"><div class="lbl"><b>Floating toolbar</b><span>Show the action toolbar next to the highlighted element.</span></div>
+          <label class="switch"><input type="checkbox" data-key="toolbarEnabled"><i></i></label></div>
+        <div class="row"><div class="lbl"><b>Element type labels</b><span>Display H2 HEADING, PARAGRAPH, CARD … on highlights.</span></div>
+          <label class="switch"><input type="checkbox" data-key="showLabels"><i></i></label></div>
+        <div class="row"><div class="lbl"><b>Link preview</b><span>Show a small live preview of where a hovered link goes. Loads the page after a short pause; sites that forbid embedding show a hint.</span></div>
+          <label class="switch"><input type="checkbox" data-key="linkPreview"><i></i></label></div>
+        <div class="row" id="row-anysite"><div class="lbl"><b>Preview sites that block embedding</b><span>Many sites (statista.com, GitHub, Google…) refuse to be shown in a preview frame. Turn this on to preview them anyway: LinkLens then relaxes frame-blocking headers <em>only</em> for the preview frame it creates, never for the pages you browse. Chrome will ask for access to all sites when you enable it; turn it off to give it back.</span></div>
+          <label class="switch"><input type="checkbox" data-key="linkPreviewAnySite" data-perm="all-sites"><i></i></label></div>
+        <div class="row"><div class="lbl"><b>Toast notifications</b><span>Confirm each successful copy on the page.</span></div>
+          <label class="switch"><input type="checkbox" data-key="toastEnabled"><i></i></label></div>
+        <div class="row"><div class="lbl"><b>Highlight colour</b><span>Outline colour used on pages. “Theme” follows the theme you picked.</span></div>
+          <div class="colors" id="colors"></div></div>
+      </section>
 
-    <section class="card">
-      <h2>Keyboard shortcuts</h2>
-      <ul class="keys">
-        <li><span>Activate Element Picker</span><kbd>Alt</kbd><kbd>E</kbd></li>
-        <li><span>Activate Section Extractor</span><kbd>Alt</kbd><kbd>S</kbd></li>
-        <li><span>Capture a screenshot</span><kbd>Alt</kbd><kbd>Shift</kbd><kbd>S</kbd></li>
-        <li><span>Copy hovered element</span><kbd>Alt</kbd><kbd>C</kbd></li>
-        <li><span>Select parent / child element</span><kbd>Alt</kbd><kbd>↑</kbd> <kbd>↓</kbd></li>
-        <li><span>Exit current mode</span><kbd>Esc</kbd></li>
-      </ul>
-      <p class="hint">Change the Chrome-level shortcuts at <a href="#" id="shortcutsLink">chrome://extensions/shortcuts</a>.</p>
-    </section>
+      <section class="card" id="sec-privacy">
+        <header class="card-h"><span class="ci" data-icon="shield"></span><div><h2>History &amp; privacy</h2><p>Your copies stay on this computer.</p></div></header>
+        <div class="row"><div class="lbl"><b>Keep copy history</b><span>Stores your last 25 copies locally in this browser. Never transmitted.</span></div>
+          <label class="switch"><input type="checkbox" data-key="historyEnabled"><i></i></label></div>
+        <div class="row"><div class="lbl"><b>Clear history</b><span id="histCount">—</span></div>
+          <button class="btn danger" id="clearHistory">Clear history</button></div>
+      </section>
 
-    <section class="card">
-      <h2>Reset</h2>
-      <div class="row"><div class="lbl"><b>Reset all settings</b><span>Restore the defaults. Copy history is kept.</span></div>
-        <button class="btn" id="reset">Reset settings</button></div>
-    </section>
-    <footer class="foot">Everything runs locally. No analytics, no servers. <span id="ver"></span></footer>
+      <section class="card" id="sec-keys">
+        <header class="card-h"><span class="ci" data-icon="keyboard"></span><div><h2>Keyboard shortcuts</h2><p>Quick ways to start and use the tools.</p></div></header>
+        <div class="kgrid">
+          <div><h3 class="kh">Open a tool</h3><ul class="keys" id="keysTools"></ul></div>
+          <div><h3 class="kh">While a tool is on</h3><ul class="keys" id="keysExtra"></ul></div>
+        </div>
+        <p class="hint">Alt+E, Alt+S, Alt+Shift+S and Alt+C work from anywhere. Once any tool is on, <b>every</b> tool above is one key away (press it again to turn the tool off). To start any tool from anywhere, give it a key at <a href="#" id="shortcutsLink">chrome://extensions/shortcuts</a>: Chrome only lets an extension suggest four by itself.</p>
+      </section>
+
+      <section class="card" id="sec-appearance">
+        <header class="card-h"><span class="ci" data-icon="palette"></span><div><h2>Appearance</h2><p>Pick a theme. It recolours this page, the popup and every tool on the page instantly.</p></div></header>
+        <div class="themes" id="themes" role="radiogroup" aria-label="Theme"></div>
+      </section>
+
+      <section class="card danger-zone" id="sec-reset">
+        <header class="card-h"><span class="ci" data-icon="refresh"></span><div><h2>Reset</h2><p>Go back to the defaults.</p></div></header>
+        <div class="row"><div class="lbl"><b>Reset all settings</b><span>Restore the defaults, including the theme. Copy history is kept.</span></div>
+          <button class="btn" id="reset">Reset settings</button></div>
+      </section>
+    </main>
   </div>
   <script src="options.js"></script>
 </body>
