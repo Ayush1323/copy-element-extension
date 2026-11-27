@@ -17,11 +17,12 @@
         <a href="#sec-copying" data-nav="sec-copying"><i data-icon="file"></i>Copying</a>
         <a href="#sec-interface" data-nav="sec-interface"><i data-icon="settings"></i>Interface</a>
         <a href="#sec-privacy" data-nav="sec-privacy"><i data-icon="shield"></i>History &amp; privacy</a>
+        <a href="#sec-authority" data-nav="sec-authority"><i data-icon="authority"></i>Domain Authority</a>
         <a href="#sec-keys" data-nav="sec-keys"><i data-icon="keyboard"></i>Shortcuts</a>
         <a href="#sec-appearance" data-nav="sec-appearance"><i data-icon="palette"></i>Appearance</a>
         <a href="#sec-reset" data-nav="sec-reset"><i data-icon="refresh"></i>Reset</a>
       </nav>
-      <p class="side-foot">Everything runs locally.<br>No analytics, no servers.<br><span id="ver"></span></p>
+      <p class="side-foot">Everything runs locally.<br>No analytics, no servers of our own.<br><span id="ver"></span></p>
     </aside>
 
     <main class="content">
@@ -67,6 +68,16 @@
           <label class="switch"><input type="checkbox" data-key="historyEnabled"><i></i></label></div>
         <div class="row"><div class="lbl"><b>Clear history</b><span id="histCount">—</span></div>
           <button class="btn danger" id="clearHistory">Clear history</button></div>
+      </section>
+
+      <section class="card" id="sec-authority">
+        <header class="card-h"><span class="ci" data-icon="authority"></span><div><h2>Domain Authority</h2><p>Where the authority score comes from, and how to make it more accurate.</p></div></header>
+        <div class="row"><div class="lbl"><b>Data sources</b><span>Tranco (popularity rank), RDAP (the official registry record), the Wayback Machine and Google Public DNS. Only the <em>domain name</em> is sent, only when you open Domain Authority, and the answers are cached on this computer.</span></div></div>
+        <div class="row" id="row-authority"><div class="lbl"><b>Open PageRank key <small class="opt">optional · free</small></b><span>Adds backlink data from the Common Crawl link graph, which makes the score noticeably more accurate (especially for sites outside the top 1 million). Get a free key at <a href="#" data-open="https://openpagerank.keywordseverywhere.com/dashboard">openpagerank.keywordseverywhere.com</a>. The key stays in this browser and is only ever sent to Open PageRank.</span>
+          <div class="keyrow"><input id="oprKey" type="password" autocomplete="off" spellcheck="false" placeholder="Paste your API key"><button class="btn" id="oprShow" type="button">Show</button><button class="btn primary" id="oprSave" type="button">Save key</button><button class="btn danger" id="oprClear" type="button" hidden>Remove</button></div>
+          <span class="keystate" id="oprState"></span></div></div>
+        <div class="row"><div class="lbl"><b>Cached lookups</b><span id="daCount">—</span></div>
+          <button class="btn" id="daClear">Clear cache</button></div>
       </section>
 
       <section class="card" id="sec-keys">

@@ -12,6 +12,7 @@ export const TOOLS = Object.freeze([
   { mode: MODES.TEXTUTILS, command: 'activate-text-utils', label: 'Text Utils', keys: ['Alt', 'U'], code: 'KeyU' },
   { mode: MODES.SCREENSHOT, command: 'capture-screenshot', label: 'Screenshot', keys: ['Alt', 'Shift', 'S'], code: 'KeyS', shift: true, suggested: true },
   { mode: MODES.SEO, command: 'activate-seo', label: 'SEO Analyzer', keys: ['Alt', 'O'], code: 'KeyO' },
+  { mode: MODES.AUTHORITY, command: 'activate-authority', label: 'Domain Authority', keys: ['Alt', 'A'], code: 'KeyA' },
   { mode: MODES.IMAGES, command: 'activate-images', label: 'Inspect Images & Text', keys: ['Alt', 'I'], code: 'KeyI' },
   { mode: MODES.MEASURE, command: 'activate-measure', label: 'Dimensions', keys: ['Alt', 'M'], code: 'KeyM' },
   { mode: MODES.CARD, command: 'activate-card-extractor', label: 'Card Extractor', keys: ['Alt', 'K'], code: 'KeyK' },

@@ -34,6 +34,9 @@
     "clipboardWrite",
     "declarativeNetRequestWithHostAccess"
   ],
+  "host_permissions": [
+    "https://web.archive.org/*"
+  ],
   "commands": {
     "activate-element-picker": {
       "suggested_key": {
@@ -68,6 +71,9 @@
     },
     "activate-seo": {
       "description": "Open the SEO Analyzer"
+    },
+    "activate-authority": {
+      "description": "Open Domain Authority"
     },
     "activate-images": {
       "description": "Inspect images, fonts and colours"

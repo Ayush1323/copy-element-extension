@@ -222,3 +222,12 @@ body::before { height: 260px; background: radial-gradient(800px 260px at 85% -20
 /* ---- the LinkLens mark ---- */
 .logo-mark { position: relative; display: block; flex: none; width: var(--lg, 36px); height: var(--lg, 36px); border-radius: 21.5%; background: var(--t-primary); box-shadow: 0 6px 14px -8px rgba(var(--t-primary-rgb), .7); }
 .logo-mark::after { content: ""; position: absolute; inset: 0; background: #fff; -webkit-mask: url("../icons/glyph.png") center / 100% 100% no-repeat; mask: url("../icons/glyph.png") center / 100% 100% no-repeat; }
+
+/* ---------- Domain Authority key ---------- */
+.lbl small.opt { margin-left: 6px; padding: 1px 8px; border-radius: 999px; background: var(--soft); color: var(--blue); font-size: 11px; font-weight: 700; vertical-align: 1px; }
+.lbl a { color: var(--blue); }
+.keyrow { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; max-width: 600px; }
+.keyrow input { flex: 1 1 240px; min-width: 0; height: 38px; padding: 0 12px; border: 1px solid var(--line); border-radius: 11px; background: var(--t-bg2); color: var(--ink); font: 500 13px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; outline: none; }
+.keyrow input:focus { border-color: var(--blue); box-shadow: 0 0 0 3px rgba(var(--t-primary-rgb), .16); background: #fff; }
+.keystate { margin-top: 6px; font-size: 12.5px; } .keystate.ok { color: var(--ok); font-weight: 600; } .keystate.bad { color: var(--bad); font-weight: 600; }
+.btn.primary { background: var(--blue); border-color: var(--blue); color: #fff; } .btn.primary:hover { filter: brightness(1.08); background: var(--blue); color: #fff; }

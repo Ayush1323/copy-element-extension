@@ -4,6 +4,7 @@ import { isRestrictedUrl } from '../shared/helpers.js';
 import { STORAGE_KEYS, DEFAULT_SETTINGS } from '../shared/constants.js';
 import { themeById, DEFAULT_THEME } from '../shared/themes.js';
 import { toolByCommand } from '../shared/shortcuts.js';
+import { lookup as domainLookup, pruneCache as pruneDomainCache, recentDomains } from './domain-lookup.js';
 
 const CONTENT_FILE = 'content/index.js';
 
@@ -147,6 +148,7 @@ async function previewToken() {
 
 syncPreviewRule();
 syncThemeIcon();
+pruneDomainCache();
 chrome.runtime.onInstalled.addListener(() => { syncPreviewRule({ force: true }); syncThemeIcon(); });
 chrome.runtime.onStartup.addListener(() => { syncPreviewRule(); syncThemeIcon(); });
 chrome.permissions.onAdded.addListener(() => syncPreviewRule());
@@ -175,12 +177,20 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     );
     return true;
   }
+  if (msg.type === MSG.DOMAIN_LOOKUP && sender.tab) {
+    domainLookup(msg.domain, msg.source, { fresh: !!msg.fresh }).then(sendResponse, () => sendResponse({ ok: false, error: 'Lookup failed', code: 'error' }));
+    return true;
+  }
+  if (msg.type === MSG.DOMAIN_RECENT && sender.tab) {
+    recentDomains(msg.limit || 6).then((domains) => sendResponse({ domains }), () => sendResponse({ domains: [] }));
+    return true;
+  }
   if (msg.type === MSG.CHECK_URL && sender.tab) {
     checkUrl(msg.url).then(sendResponse, () => sendResponse({ ok: false, error: 'Could not be reached' }));
     return true;
   }
   if (msg.type === MSG.OPEN_OPTIONS) {
-    chrome.tabs.create({ url: chrome.runtime.getURL('options/options.html#anysite') });
+    chrome.tabs.create({ url: chrome.runtime.getURL(`options/options.html#${msg.section === 'authority' ? 'authority' : 'anysite'}`) });
     return false;
   }
   if (msg.type === MSG.MODE_CHANGED && sender.tab) {

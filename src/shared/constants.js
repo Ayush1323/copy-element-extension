@@ -13,6 +13,7 @@ export const MODES = Object.freeze({
   TEXTUTILS: 'textutils',
   MEASURE: 'measure',
   SEO: 'seo',
+  AUTHORITY: 'authority',
 });
 
 export const FORMATS = Object.freeze({ PLAIN: 'plain', RICH: 'rich', MARKDOWN: 'markdown' });
@@ -39,6 +40,8 @@ export const STORAGE_KEYS = Object.freeze({
   SHOT_PREFS: 'mi_shot_prefs',
   UTILS_POS: 'mi_textutils_pos', // where the Text Utils panel was left (never the text)
   SEO_POS: 'mi_seo_pos', // where the SEO panel was left
+  DA_POS: 'mi_da_pos', // where the Domain Authority panel was left
+  DA_KEYS: 'mi_da_keys', // optional API keys for Domain Authority data sources (only ever sent to that source)
 });
 
 export const HISTORY_LIMIT = 25;
@@ -54,6 +57,7 @@ export const MODE_META = Object.freeze({
   textutils: { label: 'Text Utils', short: 'Text Utils' },
   measure: { label: 'Dimensions', short: 'Dimensions' },
   seo: { label: 'SEO', short: 'SEO' },
+  authority: { label: 'Domain Authority', short: 'Authority' },
 });
 
 /** Remembered editor choices for the screenshot feature. */

@@ -22,6 +22,7 @@ const ACTIONS = [
   // more tools
   { id: MODES.IMAGES, title: 'Inspect Images & Text', desc: 'Image size & source, fonts and colors', iconName: 'image', hint: shortcutOf(MODES.IMAGES) },
   { id: MODES.MEASURE, title: 'Dimensions', desc: 'Size, spacing & gaps between elements', iconName: 'measure', hint: shortcutOf(MODES.MEASURE) },
+  { id: MODES.AUTHORITY, title: 'Domain Authority', desc: 'Authority score, rank, age & trust', iconName: 'authority', hint: shortcutOf(MODES.AUTHORITY) },
   { id: MODES.CARD, title: 'Card Extractor', desc: 'Grab a whole card', iconName: 'card', hint: shortcutOf(MODES.CARD) },
   { id: MODES.SECTION, title: 'Section Extractor', desc: 'Copy a full section', iconName: 'section', hint: shortcutOf(MODES.SECTION) },
   { id: MODES.TEXT, title: 'Selected Text', desc: 'Copy highlighted text', iconName: 'text', hint: shortcutOf(MODES.TEXT) },
@@ -104,7 +105,7 @@ function renderStatus() {
   const active = !!state.mode;
   const domain = state.tab && !state.restricted ? domainOf(state.tab.url) : state.restricted ? 'Restricted page' : '—';
   const last = state.last;
-  const modeName = { element: 'Element Picker', card: 'Card Extractor', section: 'Section Extractor', text: 'Selected Text', images: 'Inspect Images & Text', screenshot: 'Screenshot', textutils: 'Text Utils', measure: 'Dimensions', seo: 'SEO Analyzer' }[state.mode];
+  const modeName = { element: 'Element Picker', card: 'Card Extractor', section: 'Section Extractor', text: 'Selected Text', images: 'Inspect Images & Text', screenshot: 'Screenshot', textutils: 'Text Utils', measure: 'Dimensions', seo: 'SEO Analyzer', authority: 'Domain Authority' }[state.mode];
   $('#status').innerHTML = `
     <div class="cell"><span class="k">${icon('pointer', 13)}Picker</span><span class="v"><i class="dot ${active ? 'on' : ''}"></i>${active ? escapeHtml(modeName) : 'Inactive'}</span></div>
     <div class="cell"><span class="k">${icon('globe', 13)}Website</span><span class="v" title="${escapeHtml(domain)}">${escapeHtml(domain || '—')}</span></div>
@@ -153,7 +154,8 @@ function openSheet(kind) {
     : `<h3>Privacy</h3>
        <ul class="bullets">
         <li>Everything runs locally in your browser.</li>
-        <li>No servers, analytics, tracking or external APIs.</li>
+        <li>No servers of our own, no analytics, no tracking.</li>
+        <li>Domain Authority sends only the domain name (never the page) to public data sources (Tranco, RDAP, Web Archive, Google DNS), and only when you open it.</li>
         <li>Copy history stays in local extension storage — clear or disable it any time.</li>
         <li>The extension only touches a page when you activate it (activeTab).</li>
         <li>Copied HTML is sanitized before it reaches your clipboard.</li>

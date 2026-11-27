@@ -8,7 +8,8 @@ A Manifest V3 Chrome extension for designers, developers and content teams. Hove
 see it highlighted, and copy a heading, paragraph, tag, whole **card** or whole **section** straight into
 Figma, Google Docs or any text editor — without opening DevTools.
 
-Everything runs locally in the browser: no backend, no analytics, no external APIs.
+Everything runs locally in the browser: no backend, no analytics. The only tool that asks public data sources anything is
+Domain Authority, which sends just the domain name when you open it.
 
 ## Features
 
@@ -25,6 +26,7 @@ Everything runs locally in the browser: no backend, no analytics, no external AP
 | **Text Utils** | A small floating panel you can drag anywhere on the page: **Upper Case**, **Lower Case**, **Capitalize First Letter** (every sentence), **Capitalize Each Word**, **Remove Extra Spaces**, **Replace Space With "-"** and **"_"**, and **Find & Replace** (plain text, match case, or regex with `$1` groups). Select part of the text to change only that part; undo / redo / clear, live word and character count, one-click **Copy**, Alt-key shortcuts (the shortcut list is in the panel). Opens with the text you had selected on the page. Nothing leaves the page and the text is never stored, only where you left the panel. |
 | **Dimensions** | Hover any element to see its box model drawn like DevTools: **margin** (orange), **border**, **padding** (green) and content (blue), each with its number, the size label and an info card (size, margin, border, padding, gap, display, position). **Flex and grid gaps** are drawn between the items with their values (row and column separately). **Click to pin** an element, then hover another one to see the **distance** between them (gap, or the distance to every side when one is inside the other). `Shift` shows the distance to the parent, `Alt+↑ / ↓` measures the parent / child, `Alt+C` copies the measurements as CSS. The page itself is paused while measuring (no clicks, no navigation); `Esc` leaves. |
 | **SEO Analyzer** | A draggable panel with a 0–100 **score**, a "fix first" list and eight tabs. **Overview**: title and description with length gauges, URL, canonical, meta robots, language, viewport, hreflang, favicon and live **Core Web Vitals** (LCP, INP, CLS, FCP, TTFB). **Headings**: the full H1–H6 outline with problems (no or several H1, skipped levels, empty headings), copy as Markdown. **Status**: HTTP status, indexability verdict with reasons, timing and the real response headers (X-Robots-Tag, security headers). **Links**: internal / external / nofollow / sponsored, weak anchor text, an optional **status check** of every link, copy as CSV. **Images**: alt text, oversized images, missing width / height, file sizes, thumbnails. **Schema**: JSON-LD (with missing-property warnings), microdata and RDFa. **Social**: Facebook and X previews, the real og:image size and every Open Graph / Twitter tag. **Resources**: requests, transfer size, third parties and render-blocking files. The footer shows the H1–H6, link and image counts and opens **robots.txt** (is this page allowed for `*` and Googlebot, highlighted rules) and the **sitemap** (is this page listed). Click any row to scroll to and outline the element on the page. Everything is read locally; the only requests are the ones you start (headers, robots.txt, sitemap, link check). Checking links on other sites needs the optional all-sites permission. |
+| **Domain Authority** | A draggable panel with a 0–100 **authority score** for the current site's root domain (or any domain you type), on the same logarithmic scale as Moz DA / Ahrefs DR, with its likely range and a confidence level. It is estimated from public data, each source mapped with anchor points calibrated against well-known domains: the **Tranco** top-1M rank (median of 30 daily lists; blends traffic and Majestic link data), optional **Open PageRank** (Common Crawl link graph, free key in Settings), the **registry record** via RDAP (age, expiry, registrar, locks), **Wayback Machine** capture frequency, and **DNS** trust checks (MX, SPF, DMARC, CAA, DNSSEC). Score = 78 % link popularity + 22 % supporting signals (archive 45 %, age 35 %, trust 20 %); missing sources are left out, not counted as zero. Shows a score breakdown, rank trend, archive activity chart, registration details, warning signs (new domain, expiring, on hold, never archived…) and the full formula, and copies a Markdown report. Subdomains are scored as their root domain; sites on shared hosts (github.io, vercel.app…) as themselves. Only the domain name is sent, and answers are cached locally (ranks 12 h, registry and archive 3 days). |
 | **Themes** | A simple, clean look: white and light-neutral surfaces, one vibrant colour per theme, and the same calm colour family on every tool card. Settings → Appearance has eight themes (Indigo, Ocean, Mint, Emerald, Teal, Violet, Rose, Moss), each shown as a live preview card. Picking one recolours the popup, the settings page, the toolbar icon and badge, and every on-page tool **instantly**, even on pages that are already open. The highlight colour follows the theme unless you choose a custom one. The Settings page has a side navigation (Copying, Interface, History & privacy, Shortcuts, Appearance, Reset). |
 | **Floating toolbar** | Compact handle with the element type; hover it for *Copy Text · Copy Element · Copy Card · Copy Section · Preview*. Always clamped inside the viewport. |
 | **Preview panel** | Structured preview with character/block counts, per-part copy, *Copy All / Plain / Rich / Copy Again*. |
@@ -73,6 +75,7 @@ Every tool has a shortcut (defined once in `src/shared/shortcuts.js`; the popup,
 | Text Utils | `Alt+U` | |
 | Screenshot | `Alt+Shift+S` | works from anywhere |
 | SEO Analyzer | `Alt+O` | |
+| Domain Authority | `Alt+A` | |
 | Inspect Images & Text | `Alt+I` | |
 | Dimensions | `Alt+M` | |
 | Card Extractor | `Alt+K` | |
@@ -161,14 +164,17 @@ labelled as such. Very tall pages (> 16 000 px at device resolution) are saved a
 
 | Permission | Why |
 |---|---|
-| `activeTab` | Temporary access to the current tab only after you click the icon or use a shortcut — also what allows the screenshot capture. No host permissions are requested. |
+| `activeTab` | Temporary access to the current tab only after you click the icon or use a shortcut — also what allows the screenshot capture. |
 | `scripting` | Inject the content script into that tab (all accessible frames). |
 | `storage` | Settings and local copy history. |
+| `https://web.archive.org/*` | Domain Authority only: read how often the Wayback Machine captured a homepage (that endpoint sends no CORS headers). No other site access is requested. |
 | `clipboardWrite` | Copy when the browser has no fresh user gesture (e.g. `Alt+C`), and copy screenshots as images. |
 
 ## Privacy
 
-All processing is local. No servers, analytics, tracking scripts or paid/AI APIs. History lives in
+All processing is local. No servers of our own, analytics, tracking scripts or paid/AI APIs. Domain Authority, when you
+open it, sends only the domain name to Tranco, rdap.org (and the registry it points to), the Internet Archive and Google
+Public DNS, plus Open PageRank if you saved your own key. The answers are cached in `chrome.storage.local`. History lives in
 `chrome.storage.local` and can be disabled or cleared in Settings. Copied HTML is passed through an allow-list
 sanitizer (no scripts, handlers, inline styles or `javascript:`/`data:` links).
 

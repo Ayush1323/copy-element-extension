@@ -1150,7 +1150,7 @@ await t('17b. the on-page mode bar has a Screenshot tab that starts a capture fr
   const btn = await sh('.seg [data-m="screenshot"]');
   ok(btn, 'Screenshot tab present next to Images');
   const labels = await (await sh('.seg')).evaluate((e) => [...e.querySelectorAll('button')].map((b) => b.dataset.m));
-  eq(labels.join(','), 'element,card,section,text,images,screenshot,textutils,measure,seo');
+  eq(labels.join(','), 'element,card,section,text,images,screenshot,textutils,measure,seo,authority');
   const bb = await btn.boundingBox();
   await page.mouse.click(bb.x + bb.width / 2, bb.y + bb.height / 2); await sleep(1300);
   ok(await sh('.ss-sel'), 'capture started from the bar');
@@ -1535,7 +1535,7 @@ console.log('\nTest P — popup: three big tools on one line, the rest below');
   });
   await t('P4. arrow keys move between the tool cards (two columns), and there is no search bar in the header', async () => {
     ok(!(await pp.$('#search')) && !(await pp.$('.header .search')), 'no search bar');
-    eq((await pp.$$('.action')).length, 9, 'all nine tools are always shown');
+    eq((await pp.$$('.action')).length, 10, 'all ten tools are always shown');
     await pp.evaluate(() => document.querySelectorAll('.action').forEach((c) => { c.disabled = false; })); // a normal web page enables the cards (this test page is a browser page)
     await pp.focus('.action'); await sleep(100);
     const title = () => pp.evaluate(() => document.activeElement.querySelector('.a-title') && document.activeElement.querySelector('.a-title').textContent);
@@ -1547,7 +1547,7 @@ console.log('\nTest P — popup: three big tools on one line, the rest below');
   });
   await t('P2. the other tools sit below under "More tools": Inspect Images & Text first, then Dimensions', async () => {
     const more = await pp.$$eval('#more .action', (els) => els.map((e) => e.querySelector('.a-title').textContent));
-    eq(more.join(','), 'Inspect Images & Text,Dimensions,Card Extractor,Section Extractor,Selected Text', 'in this order');
+    eq(more.join(','), 'Inspect Images & Text,Dimensions,Domain Authority,Card Extractor,Section Extractor,Selected Text', 'in this order');
     const yBig = await pp.$eval('#actions', (e) => e.getBoundingClientRect().bottom), yMore = await pp.$eval('#more', (e) => e.getBoundingClientRect().top);
     ok(yMore > yBig, 'below the big row');
   });
@@ -1902,8 +1902,8 @@ console.log('\nTest H — Themes: pick a theme in Settings; popup, settings page
     await op.bringToFront(); await op.reload(); await op.waitForSelector('.theme');
     const tops = await op.evaluate(() => ['sec-copying', 'sec-interface', 'sec-privacy', 'sec-keys', 'sec-appearance', 'sec-reset'].map((id) => Math.round(document.getElementById(id).getBoundingClientRect().top + scrollY)));
     ok(tops[0] <= tops[1] + 2 && tops[2] > tops[0] && tops[3] > tops[2] && tops[3] > tops[1] && tops[4] > tops[3] && tops[5] > tops[4], 'settings first, then shortcuts, then the themes, then Reset: ' + tops);
-    eq((await op.$$('.nav a')).length, 6, 'side navigation');
-    ok((await op.$$eval('.nav a i svg', (e) => e.length)) === 6, 'with icons');
+    eq((await op.$$('.nav a')).length, 7, 'side navigation');
+    ok((await op.$$eval('.nav a i svg', (e) => e.length)) === 7, 'with icons');
     await op.click('.nav a[data-nav="sec-appearance"]'); await sleep(900);
     ok(await op.$('.nav a.on[data-nav="sec-appearance"]'), 'clicking a nav entry scrolls there and highlights it');
     const y = await op.evaluate(() => document.getElementById('sec-appearance').getBoundingClientRect().top);
@@ -1911,7 +1911,7 @@ console.log('\nTest H — Themes: pick a theme in Settings; popup, settings page
     await op.evaluate(() => scrollTo(0, 0)); await sleep(700);
     ok(await op.$('.nav a.on[data-nav="sec-copying"]'), 'scrolling back up highlights Copying again');
     eq(await op.$eval('.side', (e) => getComputedStyle(e).position), 'sticky', 'the navigation stays in view');
-    eq(await op.$$eval('.card-h .ci svg', (e) => e.length), 6, 'every section has an icon');
+    eq(await op.$$eval('.card-h .ci svg', (e) => e.length), 7, 'every section has an icon');
     await op.screenshot({ path: join(tmp, 'options.png'), fullPage: true });
   });
   await t('H11. the settings page uses the whole window: full-height sidebar, two columns of cards on a wide screen, one column on a narrow one', async () => {
@@ -2041,8 +2041,8 @@ console.log('\nTest K — Keyboard shortcuts for every tool');
     const op = await browser.newPage(); await op.setViewport({ width: 1240, height: 900 });
     await op.goto(`chrome-extension://${extId}/options/options.html`); await op.waitForSelector('#keysTools li');
     const tools = await op.$$eval('#keysTools li', (e) => e.map((x) => x.innerText.replace(/\s+/g, ' ').trim()));
-    eq(tools.length, 9);
-    for (const want of ['Text Picker Alt E', 'Text Utils Alt U', 'Screenshot Alt Shift S', 'SEO Analyzer Alt O', 'Inspect Images & Text Alt I', 'Dimensions Alt M', 'Card Extractor Alt K', 'Section Extractor Alt S', 'Selected Text Alt T']) ok(tools.some((x) => x.startsWith(want)), 'missing: ' + want + ' in ' + tools.join(' | '));
+    eq(tools.length, 10);
+    for (const want of ['Domain Authority Alt A', 'Text Picker Alt E', 'Text Utils Alt U', 'Screenshot Alt Shift S', 'SEO Analyzer Alt O', 'Inspect Images & Text Alt I', 'Dimensions Alt M', 'Card Extractor Alt K', 'Section Extractor Alt S', 'Selected Text Alt T']) ok(tools.some((x) => x.startsWith(want)), 'missing: ' + want + ' in ' + tools.join(' | '));
     ok((await op.$$eval('#keysTools li em', (e) => e.length)) === 3, 'three of them work from anywhere out of the box');
     const extra = await op.$eval('#keysExtra', (e) => e.innerText.replace(/\s+/g, ' '));
     ok(/Alt C/.test(extra) && /Esc/.test(extra) && /\[/.test(extra) && /\//.test(extra), extra);
@@ -2192,7 +2192,7 @@ console.log('\nPopup & options UI');
 await t('popup renders actions, status, activity and has no console errors', async () => {
   await helper.goto(`chrome-extension://${extId}/popup/popup.html`);
   await helper.waitForSelector('.action');
-  eq((await helper.$$('.action')).length, 9);
+  eq((await helper.$$('.action')).length, 10);
   ok(/Text Utils/.test(await helper.$eval('.action[data-mode="textutils"]', (e) => e.textContent)), 'Text Utils card');
   ok(await helper.$eval('.greet h1', (e) => e.textContent.includes('Hover. Discover. Copy.')));
   ok((await helper.$$('#activity li')).length >= 1, 'activity lists recent copies');

@@ -5,7 +5,7 @@ import { toolByMode } from '../../shared/shortcuts.js';
 
 const TABS = [
   ['element', 'pointer', 'Element'], ['card', 'card', 'Card'], ['section', 'section', 'Section'], ['text', 'text', 'Text'], ['images', 'image', 'Inspect'],
-  ['screenshot', 'camera', 'Screenshot'], ['textutils', 'textutils', 'Utils'], ['measure', 'measure', 'Measure'], ['seo', 'seo', 'SEO'],
+  ['screenshot', 'camera', 'Screenshot'], ['textutils', 'textutils', 'Utils'], ['measure', 'measure', 'Measure'], ['seo', 'seo', 'SEO'], ['authority', 'authority', 'Authority'],
 ];
 
 export function createIndicator(ui, { onMode, onExit }) {

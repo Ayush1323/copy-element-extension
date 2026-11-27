@@ -26,11 +26,13 @@ for (const f of ['content/index.js', 'background/service-worker.js', 'popup/popu
   if (existsSync(join(dist, f))) {
     const code = readFileSync(join(dist, f), 'utf8');
     if (/(^|\n)\s*(import|export)\s[^(]/.test(code)) errors.push(`${f} still contains ES module syntax`);
-    if (/https?:\/\/(?!www\.w3\.org|claude\.com|chrome\.google|github)[a-z0-9.-]+\/[^"'\s]*\.js/i.test(code)) errors.push(`${f} loads remote script`);
+    if (/https?:\/\/(?!www\.w3\.org|claude\.com|chrome\.google|github)[a-z0-9.-]+\/[^"'\s]*\.js\b/i.test(code)) errors.push(`${f} loads remote script`);
   }
 }
 const perms = m.permissions || [];
-if (m.host_permissions || perms.includes('tabs') || perms.includes('<all_urls>')) errors.push('unexpected broad permissions (all-sites access must stay optional)');
+// the only required host access: the Wayback Machine's capture counts for Domain Authority (that endpoint sends no CORS headers)
+const allowedHosts = ['https://web.archive.org/*'];
+if ((m.host_permissions || []).some((p) => !allowedHosts.includes(p)) || perms.includes('tabs') || perms.includes('<all_urls>')) errors.push('unexpected broad permissions (all-sites access must stay optional)');
 const allowedOptional = ['<all_urls>'];
 if ((m.optional_host_permissions || []).some((p) => !allowedOptional.includes(p))) errors.push('unexpected optional host permissions');
 

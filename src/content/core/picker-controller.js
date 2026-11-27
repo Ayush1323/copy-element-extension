@@ -1,6 +1,6 @@
 import { MODES, DEFAULT_SETTINGS } from '../../shared/constants.js';
 import { MSG } from '../../shared/message-types.js';
-import { getSettings, onStorageChange, getUtilsPos, saveUtilsPos, getSeoPos, saveSeoPos } from '../../shared/storage.js';
+import { getSettings, onStorageChange, getUtilsPos, saveUtilsPos, getSeoPos, saveSeoPos, getDaPos, saveDaPos } from '../../shared/storage.js';
 import { rafThrottle, truncate, extensionAlive } from '../../shared/helpers.js';
 import { logger } from '../../utils/logger.js';
 import { errorMessage } from '../../utils/error-handler.js';
@@ -19,6 +19,7 @@ import { screenshotMode } from '../modes/screenshot-mode.js';
 import { textUtilsMode } from '../modes/textutils-mode.js';
 import { measureMode } from '../modes/measure-mode.js';
 import { seoMode } from '../modes/seo-mode.js';
+import { authorityMode } from '../modes/authority-mode.js';
 import { toolForEvent } from '../../shared/shortcuts.js';
 import { createShotSession } from '../screenshot/shot-session.js';
 import { createShadowUI } from '../ui/shadow-root-ui.js';
@@ -34,12 +35,13 @@ import { createTextPanel } from '../ui/text-inspector.js';
 import { createTextUtilsPanel } from '../ui/text-utils-panel.js';
 import { createMeasureOverlay } from '../ui/measure-overlay.js';
 import { createSeoPanel } from '../ui/seo-panel.js';
+import { createAuthorityPanel } from '../ui/authority-panel.js';
 import { readBox, boxLayers, readGaps, measureBetween, shortSelector, cssSummary, deepElementAt } from './measure.js';
 import { readTextInfo, textTargetAt, textRectAt } from './text-info.js';
 import { imageTargetAt, clearImageCaches, startImageIndex, stopImageIndex } from './image-info.js';
 import { findLinkAt, readLinkInfo } from './link-info.js';
 
-const MODE_DEFS = { element: elementMode, card: cardMode, section: sectionMode, text: textMode, images: imagesMode, screenshot: screenshotMode, textutils: textUtilsMode, measure: measureMode, seo: seoMode };
+const MODE_DEFS = { element: elementMode, card: cardMode, section: sectionMode, text: textMode, images: imagesMode, screenshot: screenshotMode, textutils: textUtilsMode, measure: measureMode, seo: seoMode, authority: authorityMode };
 const SWALLOWED = ['pointerdown', 'pointerup', 'mousedown', 'mouseup', 'dblclick', 'auxclick', 'touchstart', 'touchend'];
 const IS_TOP = (() => { try { return window.top === window; } catch (_) { return true; } })();
 
@@ -103,6 +105,7 @@ export function createPickerController() {
       textPanel: createTextPanel(ui, { onCopy: copyTextPart, onLeave: (e) => { last = { x: e.clientX, y: e.clientY }; scheduleImage(); } }),
       measure: IS_TOP ? createMeasureOverlay(ui) : null,
       seo: IS_TOP ? createSeoPanel(ui, { onCopy: copyUtilsText, onClose: () => setMode(null), onReveal: revealSeoEl, onHover: hoverSeoEl, loadPos: getSeoPos, savePos: saveSeoPos }) : null,
+      authority: IS_TOP ? createAuthorityPanel(ui, { onCopy: copyUtilsText, onClose: () => setMode(null), loadPos: getDaPos, savePos: saveDaPos }) : null,
       textUtils: IS_TOP ? createTextUtilsPanel(ui, { onCopy: copyUtilsText, onClose: () => setMode(null), loadPos: getUtilsPos, savePos: saveUtilsPos }) : null,
       toolbar: createToolbar(ui, { onAction: onToolbarAction }),
       toaster: createToaster(ui, () => settings.toastEnabled),
@@ -190,6 +193,7 @@ export function createPickerController() {
     stopUtils();
     clearTimeout(seoTimer);
     if (parts && parts.seo) parts.seo.hide();
+    if (parts && parts.authority) parts.authority.hide();
     measureBase = measureTarget = measurePin = null;
     measureLevel = 0;
     measureShift = false;
@@ -229,7 +233,7 @@ export function createPickerController() {
   async function setMode(next, { broadcast = true } = {}) {
     if (next === mode) return mode;
     if (next && !extensionAlive()) { showReloadNotice(); return mode; }
-    if ((next === MODES.SCREENSHOT || next === MODES.TEXTUTILS || next === MODES.MEASURE || next === MODES.SEO) && !IS_TOP) return mode; // these panels live in the top frame only
+    if ((next === MODES.SCREENSHOT || next === MODES.TEXTUTILS || next === MODES.MEASURE || next === MODES.SEO || next === MODES.AUTHORITY) && !IS_TOP) return mode; // these panels live in the top frame only
     if (mode) { detach(); hovered = null; }
     mode = next;
     if (!mode) {
@@ -252,6 +256,7 @@ export function createPickerController() {
       if (parts.indicator) { if (mode === MODES.SCREENSHOT) parts.indicator.hide(); else parts.indicator.show(mode); }
       if (mode === MODES.TEXTUTILS) startUtils();
       if (mode === MODES.SEO && parts.seo) parts.seo.show();
+      if (mode === MODES.AUTHORITY && parts.authority) parts.authority.show();
       if (mode === MODES.SCREENSHOT) startShot();
       if (mode === MODES.IMAGES) { clearImageCaches(); startImageIndex(); }
     }
@@ -794,7 +799,7 @@ export function createPickerController() {
 
   function updateSelectionButton() {
     if (!parts || !mode) return;
-    if (mode === MODES.SCREENSHOT || mode === MODES.TEXTUTILS || mode === MODES.MEASURE || mode === MODES.SEO) { parts.selection.hide(); return; }
+    if (mode === MODES.SCREENSHOT || mode === MODES.TEXTUTILS || mode === MODES.MEASURE || mode === MODES.SEO || mode === MODES.AUTHORITY) { parts.selection.hide(); return; }
     const sel = window.getSelection();
     if (mouseDown || !sel || sel.isCollapsed || !sel.toString().trim() || sel.rangeCount === 0) { parts.selection.hide(); return; }
     const anchor = sel.anchorNode && (sel.anchorNode.nodeType === 1 ? sel.anchorNode : sel.anchorNode.parentElement);
@@ -821,7 +826,7 @@ export function createPickerController() {
         return;
       }
     }
-    if ((mode === MODES.TEXTUTILS || mode === MODES.SEO) && ui.owns(e)) { // typing in a panel: it handles its own keys, but a tool key still switches tools
+    if ((mode === MODES.TEXTUTILS || mode === MODES.SEO || mode === MODES.AUTHORITY) && ui.owns(e)) { // typing in a panel: it handles its own keys, but a tool key still switches tools
       const tool = toolForEvent(e);
       if (tool && !(mode === MODES.TEXTUTILS && tool.mode === MODES.TEXTUTILS)) { e.preventDefault(); e.stopImmediatePropagation(); setMode(mode === tool.mode ? null : tool.mode); }
       return;

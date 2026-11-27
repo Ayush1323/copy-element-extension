@@ -1,5 +1,5 @@
 import { DEFAULT_SETTINGS } from '../shared/constants.js';
-import { getSettings, saveSettings, resetSettings, getHistory, clearHistory } from '../shared/storage.js';
+import { getSettings, saveSettings, resetSettings, getHistory, clearHistory, getDaKeys, saveDaKeys } from '../shared/storage.js';
 import { LOGO_SVG_LG as LOGO_SVG, icon } from '../shared/icons.js';
 import { TOOLS, EXTRA } from '../shared/shortcuts.js';
 import { THEMES, applyTheme, deriveColors, themeById, themeVars } from '../shared/themes.js';
@@ -170,6 +170,53 @@ function renderShortcuts() {
   $('#keysExtra').innerHTML = EXTRA.map((x) => `<li><span>${esc(x.label)}</span>${x.keys.map(kb).join('')}${x.keys2 ? ' <i>/</i> ' + x.keys2.map(kb).join('') : ''}</li>`).join('');
 }
 
+/** Domain Authority: the optional Open PageRank key and the lookup cache. */
+async function setupAuthority() {
+  const input = $('#oprKey'), state = $('#oprState'), clear = $('#oprClear'), show = $('#oprShow');
+  const paint = (key) => {
+    clear.hidden = !key;
+    state.textContent = key ? `✓ Key saved (…${key.slice(-4)}). Backlink data is included in every score.` : 'No key: the score uses the other four sources.';
+    state.className = 'keystate' + (key ? ' ok' : '');
+  };
+  const keys = await getDaKeys();
+  input.value = keys.opr || '';
+  paint(keys.opr || '');
+  show.addEventListener('click', () => { const hidden = input.type === 'password'; input.type = hidden ? 'text' : 'password'; show.textContent = hidden ? 'Hide' : 'Show'; });
+  const save = async () => {
+    const v = input.value.trim();
+    if (v && !/^[A-Za-z0-9._-]{16,200}$/.test(v)) { state.textContent = 'That does not look like an API key.'; state.className = 'keystate bad'; return; }
+    await saveDaKeys({ opr: v });
+    await dropCache('opr');
+    paint(v);
+    flashSaved(v ? 'Key saved' : 'Key removed');
+  };
+  $('#oprSave').addEventListener('click', save);
+  input.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); save(); } });
+  clear.addEventListener('click', () => { input.value = ''; save(); });
+  document.querySelectorAll('[data-open]').forEach((a) => a.addEventListener('click', (e) => { e.preventDefault(); chrome.tabs.create({ url: a.dataset.open }); }));
+  $('#daClear').addEventListener('click', async () => { await dropCache(); flashSaved('Cache cleared'); });
+  refreshDaCount();
+  if (location.hash === '#authority') {
+    const row = $('#row-authority');
+    row.scrollIntoView({ block: 'center' });
+    row.classList.add('flash');
+    setTimeout(() => input.focus(), 300);
+  }
+}
+
+async function dropCache(source = '') {
+  const all = await chrome.storage.local.get(null);
+  const keys = Object.keys(all).filter((k) => k.startsWith('mi_da:') && (!source || k.startsWith(`mi_da:${source}:`)));
+  if (keys.length) await chrome.storage.local.remove(keys);
+  refreshDaCount();
+}
+
+async function refreshDaCount() {
+  const all = await chrome.storage.local.get(null);
+  const domains = new Set(Object.keys(all).filter((k) => k.startsWith('mi_da:')).map((k) => k.split(':').slice(2).join(':')));
+  $('#daCount').textContent = domains.size ? `${domains.size} domain${domains.size === 1 ? '' : 's'} cached (refreshed automatically: ranks every 12 h, registry & archive every 3 days)` : 'Nothing cached';
+}
+
 async function init() {
   renderShortcuts();
   $('#logo').innerHTML = LOGO_SVG;
@@ -180,6 +227,7 @@ async function init() {
   applyTheme(document.documentElement, settings.theme);
   render();
   refreshHistory();
+  setupAuthority();
   document.querySelectorAll('input[type=checkbox][data-key]:not([data-perm])').forEach((i) => i.addEventListener('change', () => update({ [i.dataset.key]: i.checked })));
   const anySite = $('input[data-perm="all-sites"]');
   anySite.addEventListener('change', async () => {

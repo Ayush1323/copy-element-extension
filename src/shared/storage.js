@@ -90,6 +90,22 @@ export async function saveSeoPos(pos) {
   try { await area().set({ [STORAGE_KEYS.SEO_POS]: { x: Number(pos.x) || 0, y: Number(pos.y) || 0 } }); } catch (_) { /* extension context invalidated */ }
 }
 
+export async function getDaPos() {
+  try { return (await area().get(STORAGE_KEYS.DA_POS))[STORAGE_KEYS.DA_POS] || null; } catch (_) { return null; }
+}
+
+export async function saveDaPos(pos) {
+  try { await area().set({ [STORAGE_KEYS.DA_POS]: { x: Number(pos.x) || 0, y: Number(pos.y) || 0 } }); } catch (_) { /* extension context invalidated */ }
+}
+
+export async function getDaKeys() {
+  try { return (await area().get(STORAGE_KEYS.DA_KEYS))[STORAGE_KEYS.DA_KEYS] || {}; } catch (_) { return {}; }
+}
+
+export async function saveDaKeys(keys) {
+  await area().set({ [STORAGE_KEYS.DA_KEYS]: { ...(await getDaKeys()), ...keys } });
+}
+
 export async function getUtilsPos() {
   try { return (await area().get(STORAGE_KEYS.UTILS_POS))[STORAGE_KEYS.UTILS_POS] || null; } catch (_) { return null; }
 }
