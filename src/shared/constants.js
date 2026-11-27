@@ -39,9 +39,13 @@ export const STORAGE_KEYS = Object.freeze({
   SHOT_PREFS: 'mi_shot_prefs',
   UTILS_POS: 'mi_textutils_pos', // where the Text Utils panel was left (never the text)
   SEO_POS: 'mi_seo_pos', // where the SEO panel was left
+  SITE_LIMIT: 'mi_site_limit', // Site Analyzer: chosen page limit
+  SITE_INDEX: 'mi_site_index', // Site Analyzer: which sites have a saved report
+  SITE_SCAN: 'mi_site_scan:', // + domain: that site's last report and short scan history (this browser only)
 });
 
 export const HISTORY_LIMIT = 25;
+export const SITE_SCAN_LIMIT = 8; // websites whose last Site Analyzer report is kept
 export const HISTORY_ENTRY_MAX_CHARS = 20000;
 
 export const MODE_META = Object.freeze({

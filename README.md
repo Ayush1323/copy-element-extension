@@ -8,7 +8,7 @@ A Manifest V3 Chrome extension for designers, developers and content teams. Hove
 see it highlighted, and copy a heading, paragraph, tag, whole **card** or whole **section** straight into
 Figma, Google Docs or any text editor — without opening DevTools.
 
-Everything runs locally in the browser: no backend, no analytics, no external APIs.
+The page tools run locally in the browser: no backend, no analytics. The **Site Analyzer** adds our own Domain Authority, served from your computer.
 
 ## Features
 
@@ -25,6 +25,7 @@ Everything runs locally in the browser: no backend, no analytics, no external AP
 | **Text Utils** | A small floating panel you can drag anywhere on the page: **Upper Case**, **Lower Case**, **Capitalize First Letter** (every sentence), **Capitalize Each Word**, **Remove Extra Spaces**, **Replace Space With "-"** and **"_"**, and **Find & Replace** (plain text, match case, or regex with `$1` groups). Select part of the text to change only that part; undo / redo / clear, live word and character count, one-click **Copy**, Alt-key shortcuts (the shortcut list is in the panel). Opens with the text you had selected on the page. Nothing leaves the page and the text is never stored, only where you left the panel. |
 | **Dimensions** | Hover any element to see its box model drawn like DevTools: **margin** (orange), **border**, **padding** (green) and content (blue), each with its number, the size label and an info card (size, margin, border, padding, gap, display, position). **Flex and grid gaps** are drawn between the items with their values (row and column separately). **Click to pin** an element, then hover another one to see the **distance** between them (gap, or the distance to every side when one is inside the other). `Shift` shows the distance to the parent, `Alt+↑ / ↓` measures the parent / child, `Alt+C` copies the measurements as CSS. The page itself is paused while measuring (no clicks, no navigation); `Esc` leaves. |
 | **SEO Analyzer** | A draggable panel with a 0–100 **score**, a "fix first" list and eight tabs. **Overview**: title and description with length gauges, URL, canonical, meta robots, language, viewport, hreflang, favicon and live **Core Web Vitals** (LCP, INP, CLS, FCP, TTFB). **Headings**: the full H1–H6 outline with problems (no or several H1, skipped levels, empty headings), copy as Markdown. **Status**: HTTP status, indexability verdict with reasons, timing and the real response headers (X-Robots-Tag, security headers). **Links**: internal / external / nofollow / sponsored, weak anchor text, an optional **status check** of every link, copy as CSV. **Images**: alt text, oversized images, missing width / height, file sizes, thumbnails. **Schema**: JSON-LD (with missing-property warnings), microdata and RDFa. **Social**: Facebook and X previews, the real og:image size and every Open Graph / Twitter tag. **Resources**: requests, transfer size, third parties and render-blocking files. The footer shows the H1–H6, link and image counts and opens **robots.txt** (is this page allowed for `*` and Googlebot, highlighted rules) and the **sitemap** (is this page listed). Click any row to scroll to and outline the element on the page. Everything is read locally; the only requests are the ones you start (headers, robots.txt, sitemap, link check). Checking links on other sites needs the optional all-sites permission. |
+| **Site Analyzer** | First card under *More tools*. **DA** (our own score, see below), **PA** from internal links, **Spam Score**, broken pages, content keywords, page checks, a **fix list**, most linked external domains, changes between scans, a page table, *Copy report* and *CSV*. |
 | **Themes** | A simple, clean look: white and light-neutral surfaces, one vibrant colour per theme, and the same calm colour family on every tool card. Settings → Appearance has eight themes (Indigo, Ocean, Mint, Emerald, Teal, Violet, Rose, Moss), each shown as a live preview card. Picking one recolours the popup, the settings page, the toolbar icon and badge, and every on-page tool **instantly**, even on pages that are already open. The highlight colour follows the theme unless you choose a custom one. The Settings page has a side navigation (Copying, Interface, History & privacy, Shortcuts, Appearance, Reset). |
 | **Floating toolbar** | Compact handle with the element type; hover it for *Copy Text · Copy Element · Copy Card · Copy Section · Preview*. Always clamped inside the viewport. |
 | **Preview panel** | Structured preview with character/block counts, per-part copy, *Copy All / Plain / Rich / Copy Again*. |
@@ -157,18 +158,52 @@ first screen so they are not repeated, stitches the result and restores the scro
 It is only offered when the page itself scrolls; pages that scroll inside an inner container are captured as the visible screen and
 labelled as such. Very tall pages (> 16 000 px at device resolution) are saved at reduced resolution and you are told so.
 
+## Site Analyzer
+
+Open the popup → **Site Analyzer**, enter a website, choose the page limit and press *Analyze site*. Code:
+`src/shared/site-crawl.js` (crawler), `site-report.js` (scores), `site-keywords.js`, `src/domain/` (page).
+
+The scan's numbers are calculated by LinkLens from the pages it reads:
+
+| Number | Meaning |
+|---|---|
+| PA (1–100) | PageRank over the internal links that were scanned |
+| Content keywords | Words and phrases repeated in the site's text, weighted to titles and headings |
+| Spam Score | Points for no HTTPS, thin pages, duplicate titles, keyword stuffing, heavy outgoing linking, hidden links, no contact / about / privacy page |
+
+It cannot know which other websites link to a site, search rankings or traffic: that needs a crawl of the whole web or the search
+engine's own data. It reads the HTML the server sends and does not run page JavaScript.
+
+## Domain Authority (our own score)
+
+```bash
+npm run authority:build                    # top 5 million domains
+npm run authority:build -- --limit all     # all ~145 million (2.5 GB download, several GB of disk, much longer)
+npm run authority:start                    # keep this running; it listens on 127.0.0.1:8787 only
+```
+
+Needs Node 18 or newer. Data: [Common Crawl web graph](https://commoncrawl.org/web-graphs) (`cc-main-2026-sep-oct-nov`; see their
+[terms of use](https://commoncrawl.org/terms-of-use)). For a newer release change `RELEASE` and `TOTAL_DOMAINS` in `authority-server/lib.mjs`
+and build again; old index folders in `authority-server/data/` can be deleted by hand.
+
+Formula: `position = sqrt(harmonic centrality rank × PageRank rank)`, `score = 100 × (1 − ln(position) / ln(total domains))`.
+It measures how central a domain is in the web's links. Other tools' DA numbers come from their own data and formulas and will differ.
+Other people can only use it if you host this server somewhere and change the address in `src/domain/own-authority.js`.
+
 ## Permissions
 
 | Permission | Why |
 |---|---|
-| `activeTab` | Temporary access to the current tab only after you click the icon or use a shortcut — also what allows the screenshot capture. No host permissions are requested. |
+| `activeTab` | Temporary access to the current tab only after you click the icon or use a shortcut — also what allows the screenshot capture. No host permissions are requested up front. |
 | `scripting` | Inject the content script into that tab (all accessible frames). |
 | `storage` | Settings and local copy history. |
+| Access to the scanned site (optional) | Asked by the Site Analyzer, for that one website, when you press *Analyze site*. |
 | `clipboardWrite` | Copy when the browser has no fresh user gesture (e.g. `Alt+C`), and copy screenshots as images. |
 
 ## Privacy
 
-All processing is local. No servers, analytics, tracking scripts or paid/AI APIs. History lives in
+All page processing is local. No analytics, tracking scripts, outside APIs or AI APIs. Domain Authority is answered by your own server on
+`127.0.0.1`; the Site Analyzer requests only pages of the website you scan. History lives in
 `chrome.storage.local` and can be disabled or cleared in Settings. Copied HTML is passed through an allow-list
 sanitizer (no scripts, handlers, inline styles or `javascript:`/`data:` links).
 

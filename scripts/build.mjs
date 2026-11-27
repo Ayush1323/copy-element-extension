@@ -34,6 +34,7 @@ const entries = {
   'popup/popup': 'src/popup/popup.js',
   'options/options': 'src/options/options.js',
   'preview/preview': 'src/preview/preview.js',
+  'domain/domain': 'src/domain/domain.js',
 };
 const opts = { ...common, entryPoints: Object.fromEntries(Object.entries(entries).map(([k, v]) => [k, join(root, v)])), outdir: dist };
 
@@ -43,7 +44,7 @@ function copyStatic() {
   manifest.version = pkg.version;
   writeFileSync(join(dist, 'manifest.json'), JSON.stringify(manifest, null, 2));
   cpSync(join(root, 'public/icons'), join(dist, 'icons'), { recursive: true });
-  for (const f of ['popup/popup.html', 'popup/popup.css', 'options/options.html', 'options/options.css', 'preview/preview.html']) {
+  for (const f of ['popup/popup.html', 'popup/popup.css', 'options/options.html', 'options/options.css', 'preview/preview.html', 'domain/domain.html', 'domain/domain.css']) {
     mkdirSync(dirname(join(dist, f)), { recursive: true });
     cpSync(join(root, 'src', f), join(dist, f));
   }

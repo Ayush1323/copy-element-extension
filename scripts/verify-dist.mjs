@@ -14,14 +14,15 @@ Object.values((m.action && m.action.default_icon) || {}).forEach((f) => need(f, 
 need(m.action.default_popup, 'popup');
 need(m.options_ui.page, 'options page');
 need(m.background.service_worker, 'service worker');
-for (const html of [m.action.default_popup, m.options_ui.page, 'preview/preview.html']) {
+for (const html of [m.action.default_popup, m.options_ui.page, 'preview/preview.html', 'domain/domain.html']) {
   const src = readFileSync(join(dist, html), 'utf8');
-  for (const [, ref] of src.matchAll(/(?:src|href)="([^"#]+)"/g)) {
+  // ordinary <a> links may point anywhere; everything the page *loads* must be local
+  for (const [, ref] of src.replace(/<a\s[^>]*>/g, '').matchAll(/(?:src|href)="([^"#]+)"/g)) {
     if (/^https?:/.test(ref)) errors.push(`${html} references remote resource ${ref}`);
     else need(join(dirname(html), ref), `${html} reference`);
   }
 }
-for (const f of ['content/index.js', 'background/service-worker.js', 'popup/popup.js', 'options/options.js', 'preview/preview.js', 'preview/preview.html']) {
+for (const f of ['content/index.js', 'background/service-worker.js', 'popup/popup.js', 'options/options.js', 'preview/preview.js', 'preview/preview.html', 'domain/domain.js']) {
   need(f, 'bundle');
   if (existsSync(join(dist, f))) {
     const code = readFileSync(join(dist, f), 'utf8');

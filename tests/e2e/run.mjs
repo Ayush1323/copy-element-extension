@@ -1535,7 +1535,7 @@ console.log('\nTest P — popup: three big tools on one line, the rest below');
   });
   await t('P4. arrow keys move between the tool cards (two columns), and there is no search bar in the header', async () => {
     ok(!(await pp.$('#search')) && !(await pp.$('.header .search')), 'no search bar');
-    eq((await pp.$$('.action')).length, 9, 'all nine tools are always shown');
+    eq((await pp.$$('.action')).length, 10, 'all ten tools are always shown');
     await pp.evaluate(() => document.querySelectorAll('.action').forEach((c) => { c.disabled = false; })); // a normal web page enables the cards (this test page is a browser page)
     await pp.focus('.action'); await sleep(100);
     const title = () => pp.evaluate(() => document.activeElement.querySelector('.a-title') && document.activeElement.querySelector('.a-title').textContent);
@@ -1545,9 +1545,9 @@ console.log('\nTest P — popup: three big tools on one line, the rest below');
     await pp.keyboard.press('ArrowLeft'); await sleep(100); eq(await title(), 'Screenshot');
     await pp.keyboard.press('ArrowUp'); await sleep(100); eq(await title(), 'Text Picker', 'up a row');
   });
-  await t('P2. the other tools sit below under "More tools": Inspect Images & Text first, then Dimensions', async () => {
+  await t('P2. the other tools sit below under "More tools": Site Analyzer first, then Inspect Images & Text', async () => {
     const more = await pp.$$eval('#more .action', (els) => els.map((e) => e.querySelector('.a-title').textContent));
-    eq(more.join(','), 'Inspect Images & Text,Dimensions,Card Extractor,Section Extractor,Selected Text', 'in this order');
+    eq(more.join(','), 'Site Analyzer,Inspect Images & Text,Dimensions,Card Extractor,Section Extractor,Selected Text', 'in this order');
     const yBig = await pp.$eval('#actions', (e) => e.getBoundingClientRect().bottom), yMore = await pp.$eval('#more', (e) => e.getBoundingClientRect().top);
     ok(yMore > yBig, 'below the big row');
   });
@@ -2192,7 +2192,7 @@ console.log('\nPopup & options UI');
 await t('popup renders actions, status, activity and has no console errors', async () => {
   await helper.goto(`chrome-extension://${extId}/popup/popup.html`);
   await helper.waitForSelector('.action');
-  eq((await helper.$$('.action')).length, 9);
+  eq((await helper.$$('.action')).length, 10);
   ok(/Text Utils/.test(await helper.$eval('.action[data-mode="textutils"]', (e) => e.textContent)), 'Text Utils card');
   ok(await helper.$eval('.greet h1', (e) => e.textContent.includes('Hover. Discover. Copy.')));
   ok((await helper.$$('#activity li')).length >= 1, 'activity lists recent copies');

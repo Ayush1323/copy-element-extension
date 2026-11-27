@@ -5,6 +5,7 @@ import { TOOLS, EXTRA, shortcutOf } from '../shared/shortcuts.js';
 import { getSettings, saveSettings, getHistory, removeHistory, clearHistory, getLast, onStorageChange } from '../shared/storage.js';
 import { domainOf, isRestrictedUrl, timeAgo, escapeHtml } from '../shared/helpers.js';
 import { icon } from '../shared/icons.js';
+import { normalizeDomain } from '../shared/site-crawl.js';
 import { writeClipboard } from '../content/clipboard/clipboard-manager.js';
 import { renderHeader } from './components/header.js';
 import { renderActionCard } from './components/action-card.js';
@@ -20,6 +21,8 @@ const ACTIONS = [
   { id: MODES.SCREENSHOT, title: 'Screenshot', desc: 'Capture & annotate the page', iconName: 'camera', hint: shortcutOf(MODES.SCREENSHOT), featured: true },
   { id: MODES.SEO, title: 'SEO Analyzer', desc: 'Meta, links, images & schema', iconName: 'seo', hint: shortcutOf(MODES.SEO), featured: true },
   // more tools
+  // not an on-page mode: it opens its own page, so it also works where Chrome blocks extensions
+  { id: 'site', title: 'Site Analyzer', desc: 'DA, PA, spam score & fixes', iconName: 'authority', page: 'domain/domain.html' },
   { id: MODES.IMAGES, title: 'Inspect Images & Text', desc: 'Image size & source, fonts and colors', iconName: 'image', hint: shortcutOf(MODES.IMAGES) },
   { id: MODES.MEASURE, title: 'Dimensions', desc: 'Size, spacing & gaps between elements', iconName: 'measure', hint: shortcutOf(MODES.MEASURE) },
   { id: MODES.CARD, title: 'Card Extractor', desc: 'Grab a whole card', iconName: 'card', hint: shortcutOf(MODES.CARD) },
@@ -68,7 +71,7 @@ function renderActions() {
   big.textContent = '';
   more.textContent = '';
   for (const a of ACTIONS) {
-    (a.featured ? big : more).appendChild(renderActionCard({ ...a, active: state.mode === a.id, disabled: state.restricted || state.busy, onClick: activate }));
+    (a.featured ? big : more).appendChild(renderActionCard({ ...a, active: state.mode === a.id, disabled: !a.page && (state.restricted || state.busy), onClick: a.page ? () => openToolPage(a.page) : activate }));
   }
 }
 
@@ -152,8 +155,9 @@ function openSheet(kind) {
        <button class="primary-btn" id="open-shortcuts">Customize at chrome://extensions/shortcuts</button>`
     : `<h3>Privacy</h3>
        <ul class="bullets">
-        <li>Everything runs locally in your browser.</li>
-        <li>No servers, analytics, tracking or external APIs.</li>
+        <li>The page tools run locally in your browser.</li>
+        <li>No analytics or tracking.</li>
+        <li>The Site Analyzer reads the website you scan. Domain Authority asks your own server on this computer.</li>
         <li>Copy history stays in local extension storage — clear or disable it any time.</li>
         <li>The extension only touches a page when you activate it (activeTab).</li>
         <li>Copied HTML is sanitized before it reaches your clipboard.</li>
@@ -164,6 +168,13 @@ function openSheet(kind) {
   sheet.addEventListener('click', (e) => { if (e.target === sheet) sheet.hidden = true; });
   const os = sheet.querySelector('#open-shortcuts');
   if (os) os.addEventListener('click', () => chrome.tabs.create({ url: 'chrome://extensions/shortcuts' }));
+}
+
+/** Opens a tool that lives on its own page, with the current website's domain already filled in. */
+async function openToolPage(page) {
+  const domain = state.tab && !state.restricted ? normalizeDomain(state.tab.url) : '';
+  await chrome.tabs.create({ url: chrome.runtime.getURL(page) + (domain ? `?domain=${encodeURIComponent(domain)}` : '') });
+  window.close();
 }
 
 async function activate(mode) {

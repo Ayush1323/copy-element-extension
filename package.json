@@ -9,7 +9,9 @@
     "watch": "node scripts/build.mjs --watch",
     "test": "node --test \"tests/unit/*.test.mjs\"",
     "test:e2e": "node tests/e2e/run.mjs",
-    "verify": "node scripts/verify-dist.mjs"
+    "verify": "node scripts/verify-dist.mjs",
+    "authority:build": "node authority-server/build-index.mjs",
+    "authority:start": "node authority-server/server.mjs"
   },
   "devDependencies": {
     "esbuild": "^0.25.0",

@@ -1,4 +1,4 @@
-import { DEFAULT_SETTINGS, STORAGE_KEYS, HISTORY_LIMIT, HISTORY_ENTRY_MAX_CHARS, SHOT_DEFAULTS } from './constants.js';
+import { DEFAULT_SETTINGS, STORAGE_KEYS, HISTORY_LIMIT, HISTORY_ENTRY_MAX_CHARS, SHOT_DEFAULTS, SITE_SCAN_LIMIT } from './constants.js';
 import { uid } from './helpers.js';
 
 const area = () => chrome.storage.local;
@@ -96,4 +96,33 @@ export async function getUtilsPos() {
 
 export async function saveUtilsPos(pos) {
   try { await area().set({ [STORAGE_KEYS.UTILS_POS]: { x: Number(pos.x) || 0, y: Number(pos.y) || 0 } }); } catch (_) { /* extension context invalidated */ }
+}
+
+/* ---------- Site Analyzer ---------- */
+
+export async function getSiteLimit() {
+  return (await area().get(STORAGE_KEYS.SITE_LIMIT))[STORAGE_KEYS.SITE_LIMIT] || 0;
+}
+
+export async function saveSiteLimit(limit) {
+  await area().set({ [STORAGE_KEYS.SITE_LIMIT]: Number(limit) || 0 });
+}
+
+/** Saved sites, most recently scanned first: [{ domain, score, at }]. */
+export async function listSiteScans() {
+  return (await area().get(STORAGE_KEYS.SITE_INDEX))[STORAGE_KEYS.SITE_INDEX] || [];
+}
+
+/** { report, history } of a site, or null. */
+export async function getSiteScan(domain) {
+  const key = STORAGE_KEYS.SITE_SCAN + domain;
+  return (await area().get(key))[key] || null;
+}
+
+/** Keeps the newest few sites: older reports are removed so storage never fills up. */
+export async function saveSiteScan(domain, scan) {
+  const list = [{ domain, score: scan.report.score, at: scan.report.at }, ...(await listSiteScans()).filter((s) => s.domain !== domain)];
+  const dropped = list.slice(SITE_SCAN_LIMIT).map((s) => STORAGE_KEYS.SITE_SCAN + s.domain);
+  if (dropped.length) await area().remove(dropped);
+  await area().set({ [STORAGE_KEYS.SITE_SCAN + domain]: scan, [STORAGE_KEYS.SITE_INDEX]: list.slice(0, SITE_SCAN_LIMIT) });
 }

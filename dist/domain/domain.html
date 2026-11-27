@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Site Analyzer · LinkLens</title>
+  <link rel="stylesheet" href="domain.css">
+</head>
+<body>
+  <header class="top">
+    <span id="logo"></span>
+    <b>LinkLens</b>
+    <span class="top-note">The site scan runs in your browser.</span>
+  </header>
+
+  <section class="hero">
+    <h1>Site Analyzer</h1>
+    <p>Check a website's Domain Authority, then scan it for its strongest pages, content keywords, risks and what to fix.</p>
+    <form id="form" class="search" novalidate>
+      <input id="domain" type="text" inputmode="url" autocomplete="off" spellcheck="false" placeholder="example.com" aria-label="Website to analyze" aria-describedby="form-error">
+      <button type="submit" id="go">Analyze site</button>
+    </form>
+    <p id="form-error" class="form-error" role="alert" hidden></p>
+    <div class="options">
+      <button type="button" id="check-authority" class="ghost">Check authority only</button>
+      <label>Scan up to <select id="limit"></select></label>
+      <span id="recent"></span>
+    </div>
+  </section>
+
+  <main class="wrap">
+    <section class="card da" id="own" aria-label="Domain Authority"></section>
+    <section class="card progress" id="progress" hidden>
+      <div class="p-head"><h2 id="p-title" role="status">Scanning…</h2><button type="button" class="btn" id="stop">Stop and show results</button></div>
+      <div class="bar" id="p-bar" role="progressbar" aria-label="Scan progress" aria-valuemin="0"><i></i></div>
+      <p id="p-url"></p>
+    </section>
+    <div id="report" hidden></div>
+    <section class="card intro" id="intro">
+      <h2>What you get</h2>
+      <ul>
+        <li><b>Page checks</b> for content, technical setup, links and images</li>
+        <li><b>Page Authority (PA)</b> of your strongest pages, ranked by your own internal linking</li>
+        <li><b>Content keywords</b> the site really talks about</li>
+        <li><b>Spam score</b> for patterns that look low quality or spammy</li>
+        <li><b>Fix list</b>: broken pages, titles, headings, alt text and more</li>
+        <li><b>Changes</b> since your previous scan: new and lost pages and links</li>
+      </ul>
+    </section>
+  </main>
+
+  <footer class="foot">
+    DA, PA and Spam Score are calculated by LinkLens (DA from Common Crawl's web data). Other tools use their own data and
+    formulas, so their numbers differ.
+  </footer>
+  <script src="domain.js"></script>
+</body>
+</html>

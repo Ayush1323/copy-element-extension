@@ -1,1 +1,3 @@
 node_modules/
+authority-server/data/
+*.txt.gz

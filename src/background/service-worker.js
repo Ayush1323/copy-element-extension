@@ -147,7 +147,11 @@ async function previewToken() {
 
 syncPreviewRule();
 syncThemeIcon();
-chrome.runtime.onInstalled.addListener(() => { syncPreviewRule({ force: true }); syncThemeIcon(); });
+chrome.runtime.onInstalled.addListener(() => {
+  syncPreviewRule({ force: true });
+  syncThemeIcon();
+  chrome.storage.local.remove('mi_moz_token'); // a key saved by an earlier build
+});
 chrome.runtime.onStartup.addListener(() => { syncPreviewRule(); syncThemeIcon(); });
 chrome.permissions.onAdded.addListener(() => syncPreviewRule());
 chrome.permissions.onRemoved.addListener(() => syncPreviewRule());
